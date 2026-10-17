@@ -1,0 +1,34 @@
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel
+
+
+class OperationalAlert(BaseModel):
+    id: str
+    type: str  # 'pending_payment', 'expiring_soon', 'in_grace_period', 'suspended'
+    severity: str  # 'warning', 'danger', 'info'
+    title: str
+    description: str
+    target_id: str
+    created_at: str
+
+
+class TenantCounts(BaseModel):
+    total: int
+    active: int
+    trial: int
+    grace_period: int
+    suspended: int
+    frozen: int
+
+
+class DashboardMetricsResponse(BaseModel):
+    mrr_usd: float
+    mrr_ves: float
+    exchange_rate_usd_ves: float
+    tenant_counts: TenantCounts
+    retention_rate_pct: float
+    churn_rate_pct: float
+    pending_audit_count: int
+    expiring_soon_count: int
+    alerts: List[OperationalAlert]
+    monthly_retention_history: List[Dict[str, Any]]
