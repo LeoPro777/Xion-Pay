@@ -642,6 +642,19 @@ async def test_crm_client_edit_and_deactivate(client: AsyncClient, test_db: Asyn
     assert react_res.json()["status"] == "active"
 
 
+@pytest.mark.asyncio
+async def test_auth_config_endpoint(client: AsyncClient):
+    """Verify public auth configuration endpoint returns google_client_id."""
+    res = await client.get("/api/v1/auth/config")
+    assert res.status_code == 200
+    data = res.json()
+    assert "google_client_id" in data
 
 
-
+def test_database_url_supabase_normalization():
+    """Verify that postgresql and supabase pooler URLs with sslmode are properly normalized."""
+    from src.core.config import Settings
+    s = Settings(DATABASE_URL="postgresql://postgres.abc:pass@aws-0-us-east-1.pooler.supabase.com:6543/postgres?sslmode=require")
+    assert s.DATABASE_URL.startswith("postgresql+asyncpg://")
+    assert "ssl=require" in s.DATABASE_URL
+    assert "sslmode=require" not in s.DATABASE_URL

@@ -28,8 +28,17 @@ logger = logging.getLogger("xionpay.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing Xion-Pay API database schema and cryptographic subsystem...")
-    await init_db()
-    logger.info("Database schema initialized successfully.")
+    try:
+        await init_db()
+        logger.info("Database schema initialized successfully.")
+    except Exception as exc:
+        logger.error(
+            f"Fallo en la conexión inicial con la base de datos ({type(exc).__name__}: {exc}). "
+            "Aviso Render + Supabase: Render no soporta IPv6 saliente. Si estás utilizando la URL directa "
+            "(db.[REF].supabase.co), debes cambiarla por el Connection Pooler de Supabase "
+            "(aws-0-[REGION].pooler.supabase.com en puerto 6543 o 5432) en DATABASE_URL.",
+            exc_info=True,
+        )
     yield
     logger.info("Shutting down Xion-Pay API server.")
 

@@ -22,6 +22,10 @@ services:
         value: /app/certs/license_private.pem
       - key: RSA_PUBLIC_KEY_PATH
         value: /app/certs/license_public.pem
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: INITIAL_ADMIN_EMAIL
+        sync: false
 
 databases:
   - name: xionpay-db

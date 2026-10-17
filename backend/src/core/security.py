@@ -60,7 +60,11 @@ def verify_google_id_token(token: str) -> Dict[str, Any]:
         id_info = google_id_token.verify_oauth2_token(
             token, google_requests.Request(), settings.GOOGLE_CLIENT_ID
         )
+        if not id_info.get("email_verified", True):
+            raise AuthenticationError("La dirección de correo de Google no se encuentra verificada.")
         return id_info
+    except AuthenticationError:
+        raise
     except Exception as e:
         raise AuthenticationError(f"Error verificando Google ID Token: {str(e)}")
 

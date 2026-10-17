@@ -37,6 +37,24 @@ async def seed():
         else:
             print("[INFO] Master superadmin already exists.")
 
+        # 1.1 Custom Initial Superadmin (from environment variable)
+        initial_admin_email = (getattr(settings, "INITIAL_ADMIN_EMAIL", "") or os.getenv("INITIAL_ADMIN_EMAIL", "")).strip()
+        if initial_admin_email and "@" in initial_admin_email and initial_admin_email != "admin@xionpay.internal":
+            custom_admin_res = await session.execute(select(AdminUser).where(AdminUser.email == initial_admin_email))
+            custom_admin = custom_admin_res.scalar_one_or_none()
+            if not custom_admin:
+                custom_admin = AdminUser(
+                    email=initial_admin_email,
+                    full_name="Superadmin Google Inicial",
+                    google_sub=f"pending-google-link-{uuid.uuid4()}",
+                    role="superadmin",
+                    is_active=True,
+                )
+                session.add(custom_admin)
+                print(f"[OK] Created initial superadmin from env: {initial_admin_email}")
+            else:
+                print(f"[INFO] Initial superadmin from env ({initial_admin_email}) already exists.")
+
         # 2. Plans
         plans_data = [
             {

@@ -12,9 +12,18 @@ from src.modules.auth.schemas import (
     AdminUserResponse,
     CreateAdminUserRequest,
 )
+from src.core.config import settings
 from src.modules.auth.service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Autenticación"])
+
+
+@router.get("/config")
+async def get_auth_config():
+    """Exposes public authentication configuration (Google Client ID) to frontend."""
+    return {
+        "google_client_id": settings.GOOGLE_CLIENT_ID,
+    }
 
 
 @router.post("/google-login", response_model=TokenResponse)

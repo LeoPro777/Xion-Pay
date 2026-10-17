@@ -13,8 +13,24 @@ if "sqlite" in settings.DATABASE_URL:
     engine_kwargs["connect_args"] = {"check_same_thread": False}
 else:
     engine_kwargs["pool_pre_ping"] = True
-    engine_kwargs["pool_size"] = 10
-    engine_kwargs["max_overflow"] = 20
+    connect_args = {}
+
+    is_pooler = (
+        ":6543" in settings.DATABASE_URL
+        or "pooler.supabase.com" in settings.DATABASE_URL
+        or "pgbouncer=true" in settings.DATABASE_URL
+    )
+    if is_pooler:
+        connect_args["statement_cache_size"] = 0
+        connect_args["prepared_statement_cache_size"] = 0
+        engine_kwargs["pool_size"] = 5
+        engine_kwargs["max_overflow"] = 10
+    else:
+        engine_kwargs["pool_size"] = 10
+        engine_kwargs["max_overflow"] = 20
+
+    if connect_args:
+        engine_kwargs["connect_args"] = connect_args
 
 engine = create_async_engine(settings.DATABASE_URL, **engine_kwargs)
 

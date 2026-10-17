@@ -34,12 +34,23 @@ class Settings(BaseSettings):
     def assemble_database_url(cls, v: str) -> str:
         if isinstance(v, str):
             if v.startswith("postgres://"):
-                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+                v = v.replace("postgres://", "postgresql+asyncpg://", 1)
             elif v.startswith("postgresql://") and not v.startswith("postgresql+"):
-                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+                v = v.replace("postgresql://", "postgresql+asyncpg://", 1)
+            if "sslmode=require" in v:
+                v = v.replace("sslmode=require", "ssl=require")
+            if ".supabase.co" in v and "pooler" not in v:
+                import sys
+                print(
+                    "[ADVERTENCIA] Detectada conexión directa a Supabase (db.*.supabase.co). "
+                    "En Render y entornos IPv4 esto provocará 'Network is unreachable'. "
+                    "Utiliza la cadena del Connection Pooler (aws-0-[REGION].pooler.supabase.com en puerto 6543 o 5432).",
+                    file=sys.stderr,
+                )
         return v
 
     GOOGLE_CLIENT_ID: str = Field(default="mock-google-client-id-for-dev.apps.googleusercontent.com")
+    INITIAL_ADMIN_EMAIL: str = Field(default="", description="Email a aprovisionar automáticamente como superadmin inicial")
 
     ALLOWED_ORIGINS: Union[List[str], str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173", "https://admin.xionpay.com"]
