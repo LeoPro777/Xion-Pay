@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: xion-pay
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: xionpay-db
+          property: connectionString
+      - key: ALLOWED_ORIGINS
+        value: "*"
+      - key: RSA_PRIVATE_KEY_PATH
+        value: /app/certs/license_private.pem
+      - key: RSA_PUBLIC_KEY_PATH
+        value: /app/certs/license_public.pem
+
+databases:
+  - name: xionpay-db
+    databaseName: xionpay_db
+    user: xionpay_admin
+    plan: starter
+    region: oregon

@@ -57,8 +57,22 @@ Ejecuta el archivo [dev.bat](file:///c:/Users/Usuario/Desktop/Xion/Xion-Pay/scri
 
 ## 🐳 Despliegue en Producción (Con Docker)
 
-Para entornos de staging o producción:
+Para entornos de staging o producción local con múltiples servicios:
 ```bash
 docker compose up -d --build
 ```
 
+### 🚀 Despliegue en Render (Contenedor Único)
+
+El repositorio está configurado para ejecutarse en Render en un solo contenedor unificado (Nginx sirviendo el Frontend SPA y actuando como proxy inverso hacia FastAPI/Uvicorn y WebSockets):
+
+1. **Vía Render Blueprints (Automático):**
+   * En el Render Dashboard, selecciona **New +** > **Blueprint**.
+   * Selecciona este repositorio.
+   * Render leerá el archivo [render.yaml](file:///c:/Users/Usuario/Desktop/Xion/Xion-Pay/render.yaml), aprovisionará la base de datos PostgreSQL gestionada y desplegará el contenedor de forma automática.
+
+2. **Vía Web Service Manual:**
+   * En el Render Dashboard, selecciona **New +** > **Web Service**.
+   * Configura el entorno como **Docker** (detectará el [Dockerfile](file:///c:/Users/Usuario/Desktop/Xion/Xion-Pay/Dockerfile) raíz).
+   * Health Check Path: `/health`.
+   * El contenedor se enlaza dinámicamente a la variable `$PORT` asignada por Render.

@@ -1,0 +1,49 @@
+# Version Control & IDE
+.git
+.gitignore
+.dockerignore
+.agents
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Python Cache & Virtualenvs
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.coverage
+htmlcov
+.venv
+*/.venv
+backend/.venv
+
+# Node & Frontend
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local Databases & Secrets
+*.db
+*.sqlite
+*.sqlite3
+xionpay.db
+backend/xionpay.db
+certs/*.pem
+backend/certs/*.pem
+.env
+.env.*
+!.env.example
+
+# Documentation & Misc
+docs/
+*.md
+!README.md

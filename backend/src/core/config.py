@@ -29,6 +29,16 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str = Field(default="sqlite+aiosqlite:///./xionpay.db")
 
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def assemble_database_url(cls, v: str) -> str:
+        if isinstance(v, str):
+            if v.startswith("postgres://"):
+                return v.replace("postgres://", "postgresql+asyncpg://", 1)
+            elif v.startswith("postgresql://") and not v.startswith("postgresql+"):
+                return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return v
+
     GOOGLE_CLIENT_ID: str = Field(default="mock-google-client-id-for-dev.apps.googleusercontent.com")
 
     ALLOWED_ORIGINS: Union[List[str], str] = Field(
