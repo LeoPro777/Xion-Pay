@@ -1,13 +1,216 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --bg-main: #f8f9fa;
     --bg-card: #ffffff;
+    --bg-subtle: #f1f5f9;
     --border-subtle: #e2e8f0;
-    --text-primary: #0f172a;
-    --text-muted: #64748b;
+    --border-strong: #09090b;
+    --text-primary: #09090b;
+    --text-secondary: #3f3f46;
+    --text-muted: #71717a;
     --brand-accent: #18181b;
+    --brand-accent-fg: #ffffff;
+    --font-base: 14px;
+  }
+
+  html.dark {
+    --bg-main: #09090b;
+    --bg-card: #121215;
+    --bg-subtle: #18181b;
+    --border-subtle: #27272a;
+    --border-strong: #ffffff;
+    --text-primary: #ffffff;
+    --text-secondary: #e4e4e7;
+    --text-muted: #a1a1aa;
+    --brand-accent: #ffffff;
+    --brand-accent-fg: #09090b;
+  }
+
+  /* High Contrast Mode */
+  html.high-contrast {
+    --bg-main: #ffffff;
+    --bg-card: #ffffff;
+    --bg-subtle: #f4f4f5;
+    --border-subtle: #000000;
+    --border-strong: #000000;
+    --text-primary: #000000;
+    --text-secondary: #000000;
+    --text-muted: #18181b;
+    --brand-accent: #000000;
+    --brand-accent-fg: #ffffff;
+  }
+
+  html.dark.high-contrast {
+    --bg-main: #000000;
+    --bg-card: #000000;
+    --bg-subtle: #0a0a0c;
+    --border-subtle: #ffffff;
+    --border-strong: #ffffff;
+    --text-primary: #ffffff;
+    --text-secondary: #ffffff;
+    --text-muted: #f4f4f5;
+    --brand-accent: #ffffff;
+    --brand-accent-fg: #000000;
+  }
+
+  /* Font Scaling */
+  html[data-font-size="sm"] {
+    --font-base: 13px;
+    font-size: 13px;
+  }
+
+  html[data-font-size="md"] {
+    --font-base: 14px;
+    font-size: 14px;
+  }
+
+  html[data-font-size="lg"] {
+    --font-base: 16px;
+    font-size: 16px;
+  }
+
+  /* Theme Accents (Light & Dark Variants) */
+  :root {
+    --accent: #18181b;
+    --accent-hover: #27272a;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(24, 24, 27, 0.08);
+  }
+  html.dark {
+    --accent: #ffffff;
+    --accent-hover: #f4f4f5;
+    --accent-fg: #09090b;
+    --accent-subtle: rgba(255, 255, 255, 0.12);
+  }
+
+  /* Emerald */
+  html[data-accent="emerald"] {
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(16, 185, 129, 0.12);
+  }
+  html.dark[data-accent="emerald"] {
+    --accent: #10b981;
+    --accent-hover: #34d399;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(16, 185, 129, 0.22);
+  }
+
+  /* Indigo */
+  html[data-accent="indigo"] {
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(79, 70, 229, 0.12);
+  }
+  html.dark[data-accent="indigo"] {
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(99, 102, 241, 0.22);
+  }
+
+  /* Sapphire Blue */
+  html[data-accent="blue"] {
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(37, 99, 235, 0.12);
+  }
+  html.dark[data-accent="blue"] {
+    --accent: #3b82f6;
+    --accent-hover: #60a5fa;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(59, 130, 246, 0.22);
+  }
+
+  /* Electric Violet */
+  html[data-accent="violet"] {
+    --accent: #7c3aed;
+    --accent-hover: #6d28d9;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(124, 58, 237, 0.12);
+  }
+  html.dark[data-accent="violet"] {
+    --accent: #8b5cf6;
+    --accent-hover: #a78bfa;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(139, 92, 246, 0.22);
+  }
+
+  /* Amber Gold */
+  html[data-accent="amber"] {
+    --accent: #d97706;
+    --accent-hover: #b45309;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(217, 119, 6, 0.12);
+  }
+  html.dark[data-accent="amber"] {
+    --accent: #f59e0b;
+    --accent-hover: #fbbf24;
+    --accent-fg: #09090b;
+    --accent-subtle: rgba(245, 158, 11, 0.22);
+  }
+
+  /* Crimson Rose */
+  html[data-accent="rose"] {
+    --accent: #e11d48;
+    --accent-hover: #be123c;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(225, 29, 72, 0.12);
+  }
+  html.dark[data-accent="rose"] {
+    --accent: #f43f5e;
+    --accent-hover: #fb7185;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(244, 63, 94, 0.22);
+  }
+
+  /* Cyan Ocean */
+  html[data-accent="cyan"] {
+    --accent: #0891b2;
+    --accent-hover: #0e7490;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(8, 145, 178, 0.12);
+  }
+  html.dark[data-accent="cyan"] {
+    --accent: #06b6d4;
+    --accent-hover: #22d3ee;
+    --accent-fg: #09090b;
+    --accent-subtle: rgba(6, 182, 212, 0.22);
+  }
+
+  /* Sunset Orange */
+  html[data-accent="orange"] {
+    --accent: #ea580c;
+    --accent-hover: #c2410c;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(234, 88, 12, 0.12);
+  }
+  html.dark[data-accent="orange"] {
+    --accent: #f97316;
+    --accent-hover: #fb923c;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(249, 115, 22, 0.22);
+  }
+
+  /* Titanium Slate */
+  html[data-accent="titanium"] {
+    --accent: #64748b;
+    --accent-hover: #475569;
+    --accent-fg: #ffffff;
+    --accent-subtle: rgba(100, 116, 139, 0.12);
+  }
+  html.dark[data-accent="titanium"] {
+    --accent: #94a3b8;
+    --accent-hover: #cbd5e1;
+    --accent-fg: #09090b;
+    --accent-subtle: rgba(148, 163, 184, 0.22);
   }
 
   body {
@@ -18,6 +221,7 @@
     padding: 0;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   }
 
   /* Custom scrollbars */
@@ -26,11 +230,143 @@
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #f1f5f9;
+    background: transparent;
   }
   ::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 3px;
   }
+  html.dark ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+  }
 }
 
+/* Automatic Dark Mode Palette Adaptations for existing Tailwind utility classes */
+html.dark .bg-white:not([class*="dark:bg-"]):not([data-theme-fixed]) {
+  background-color: var(--bg-card);
+}
+html.dark .bg-slate-50:not([class*="dark:bg-"]):not([data-theme-fixed]),
+html.dark .bg-slate-50\/50:not([class*="dark:bg-"]):not([data-theme-fixed]),
+html.dark .bg-slate-100:not([class*="dark:bg-"]):not([data-theme-fixed]) {
+  background-color: var(--bg-subtle);
+}
+html.dark .bg-slate-100\/80:not([class*="dark:bg-"]):not([data-theme-fixed]),
+html.dark .bg-slate-100\/60:not([class*="dark:bg-"]):not([data-theme-fixed]) {
+  background-color: var(--bg-subtle);
+}
+html.dark .text-slate-900:not([class*="dark:text-"]):not([data-theme-fixed]),
+html.dark .text-slate-800:not([class*="dark:text-"]):not([data-theme-fixed]) {
+  color: var(--text-primary);
+}
+html.dark .text-slate-700:not([class*="dark:text-"]):not([data-theme-fixed]),
+html.dark .text-slate-600:not([class*="dark:text-"]):not([data-theme-fixed]) {
+  color: var(--text-secondary);
+}
+html.dark .text-slate-500:not([class*="dark:text-"]):not([data-theme-fixed]),
+html.dark .text-slate-400:not([class*="dark:text-"]):not([data-theme-fixed]) {
+  color: var(--text-muted);
+}
+html.dark .border-slate-100:not([class*="dark:border-"]):not([data-theme-fixed]),
+html.dark .border-slate-200:not([class*="dark:border-"]):not([data-theme-fixed]),
+html.dark .border-slate-200\/80:not([class*="dark:border-"]):not([data-theme-fixed]),
+html.dark .border-slate-300:not([class*="dark:border-"]):not([data-theme-fixed]) {
+  border-color: var(--border-subtle);
+}
+html.dark .divide-slate-100 > * + *:not([class*="dark:border-"]),
+html.dark .divide-slate-200 > * + *:not([class*="dark:border-"]) {
+  border-color: var(--border-subtle);
+}
+
+/* Direct Accent Utility Classes */
+.bg-accent {
+  background-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}
+.bg-accent:hover {
+  background-color: var(--accent-hover) !important;
+}
+.text-accent {
+  color: var(--accent) !important;
+}
+.border-accent {
+  border-color: var(--accent) !important;
+}
+.bg-accent-subtle {
+  background-color: var(--accent-subtle) !important;
+}
+
+/* Primary action buttons inherit accent color when non-monochrome */
+html[data-accent]:not([data-accent="monochrome"]) button.btn-primary,
+html[data-accent]:not([data-accent="monochrome"]) .btn-primary,
+html[data-accent]:not([data-accent="monochrome"]) button.bg-\[\#18181b\]:not([data-keep-dark]),
+html[data-accent]:not([data-accent="monochrome"]) .bg-\[\#18181b\]:not([data-keep-dark]) {
+  background-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}
+html[data-accent]:not([data-accent="monochrome"]) button.bg-\[\#18181b\]:hover:not([data-keep-dark]) {
+  background-color: var(--accent-hover) !important;
+}
+
+html.dark[data-accent="monochrome"] button.bg-slate-900:not([class*="dark:bg-"]):not([data-theme-fixed]),
+html.dark[data-accent="monochrome"] button.bg-\[\#18181b\]:not([class*="dark:bg-"]):not([data-theme-fixed]),
+html.dark[data-accent="monochrome"] .btn-primary {
+  background-color: var(--accent) !important;
+  color: var(--accent-fg) !important;
+}
+
+/* Hover adaptations */
+html.dark .hover\:bg-slate-50:hover:not([class*="dark:hover:bg-"]) {
+  background-color: var(--bg-subtle);
+}
+html.dark .hover\:bg-slate-100:hover:not([class*="dark:hover:bg-"]) {
+  background-color: var(--bg-subtle);
+}
+html.dark .hover\:text-slate-900:hover:not([class*="dark:hover:text-"]) {
+  color: var(--text-primary);
+}
+
+/* High-Contrast Mode Strict Overrides */
+html.high-contrast {
+  --border-subtle: #000000;
+  --border-strong: #000000;
+}
+html.high-contrast .border,
+html.high-contrast [class*="border-slate-"],
+html.high-contrast [class*="border-zinc-"] {
+  border-color: #000000 !important;
+}
+
+html.dark.high-contrast {
+  background-color: #000000 !important;
+  --bg-main: #000000;
+  --bg-card: #000000;
+  --bg-subtle: #0a0a0c;
+  --border-subtle: #ffffff;
+  --border-strong: #ffffff;
+  --text-primary: #ffffff;
+  --text-secondary: #ffffff;
+  --text-muted: #e4e4e7;
+}
+html.dark.high-contrast .bg-white:not([data-theme-fixed]),
+html.dark.high-contrast .bg-slate-50:not([data-theme-fixed]),
+html.dark.high-contrast .bg-slate-100:not([data-theme-fixed]),
+html.dark.high-contrast [class*="bg-zinc-"]:not([data-theme-fixed]) {
+  background-color: #000000 !important;
+}
+html.dark.high-contrast .text-slate-900,
+html.dark.high-contrast .text-slate-800,
+html.dark.high-contrast .text-slate-700,
+html.dark.high-contrast .text-slate-600,
+html.dark.high-contrast [class*="text-zinc-"] {
+  color: #ffffff !important;
+}
+html.dark.high-contrast .border,
+html.dark.high-contrast [class*="border-slate-"],
+html.dark.high-contrast [class*="border-zinc-"] {
+  border-color: #ffffff !important;
+}
+html.dark.high-contrast button,
+html.dark.high-contrast input,
+html.dark.high-contrast select {
+  border-color: #ffffff !important;
+}

@@ -70,7 +70,8 @@ async def init_db() -> None:
         def _migrate_columns_sync(connection):
             from sqlalchemy import inspect, text
             inspector = inspect(connection)
-            if "tenants" in inspector.get_table_names():
+            table_names = inspector.get_table_names()
+            if "tenants" in table_names:
                 existing_cols = {c["name"] for c in inspector.get_columns("tenants")}
                 new_cols = [
                     ("contact_name", "VARCHAR(150)"),
@@ -78,11 +79,30 @@ async def init_db() -> None:
                     ("id_doc_number", "VARCHAR(50)"),
                     ("crm_lead_source", "VARCHAR(100) DEFAULT 'manual'"),
                     ("crm_notes", "TEXT"),
+                    ("wallet_balance", "NUMERIC(12, 2) DEFAULT 0.00"),
+                    ("delivery_channel", "VARCHAR(50) DEFAULT 'email'"),
+                    ("telegram_chat_id", "VARCHAR(100)"),
                 ]
                 for col_name, col_def in new_cols:
                     if col_name not in existing_cols:
                         try:
                             connection.execute(text(f"ALTER TABLE tenants ADD COLUMN {col_name} {col_def}"))
+                        except Exception:
+                            pass
+
+            if "payment_reports" in table_names:
+                existing_pay_cols = {c["name"] for c in inspector.get_columns("payment_reports")}
+                new_pay_cols = [
+                    ("destination_bank", "VARCHAR(150)"),
+                    ("payment_method_type", "VARCHAR(50) DEFAULT 'pago_movil'"),
+                    ("exchange_rate", "NUMERIC(12, 4) DEFAULT 1.0"),
+                    ("amount_usd", "NUMERIC(14, 2) DEFAULT 0.00"),
+                    ("amount_ves", "NUMERIC(14, 2) DEFAULT 0.00"),
+                ]
+                for col_name, col_def in new_pay_cols:
+                    if col_name not in existing_pay_cols:
+                        try:
+                            connection.execute(text(f"ALTER TABLE payment_reports ADD COLUMN {col_name} {col_def}"))
                         except Exception:
                             pass
 

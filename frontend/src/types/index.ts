@@ -140,14 +140,24 @@ export interface TenantListItem {
   owner_email: string;
   owner_phone: string;
   status: 'trial' | 'active' | 'frozen' | 'suspended';
+  wallet_balance?: number;
+  delivery_channel?: 'email' | 'whatsapp' | 'telegram' | 'all' | string;
+  telegram_chat_id?: string;
   trial_days_remaining?: number;
   courtesy_days_granted: number;
   crm_lead_source?: string;
   activo_seniat?: boolean;
   created_at: string;
   active_plan_name?: string;
+  active_plan_price?: number;
   subscription_status?: string;
   subscription_expires_at?: string;
+  next_billing_date?: string;
+  countdown_seconds?: number;
+  countdown_days?: number;
+  countdown_hours?: number;
+  is_due?: boolean;
+  in_grace_period?: boolean;
 }
 
 export interface TenantDetail extends TenantListItem {
@@ -178,9 +188,14 @@ export interface PaymentReport {
   tenant_id: string;
   subscription_id: string;
   origin_bank: string;
+  destination_bank?: string;
+  payment_method_type?: string;
   reference_number: string;
   amount: number;
   currency: string;
+  exchange_rate?: number;
+  amount_usd?: number;
+  amount_ves?: number;
   proof_attachment_url: string;
   status: 'pending' | 'approved' | 'rejected';
   rejection_reason?: string;
@@ -190,7 +205,12 @@ export interface PaymentReport {
   metadata_info?: Record<string, any>;
   tenant_commercial_name?: string;
   tenant_tax_id?: string;
+  tenant_phone?: string;
+  tenant_email?: string;
+  tenant_contact_name?: string;
   plan_name?: string;
+  plan_price?: number;
+  tenant_wallet_balance?: number;
 }
 
 export interface SystemSettings {

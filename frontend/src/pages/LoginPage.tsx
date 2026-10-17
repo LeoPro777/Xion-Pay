@@ -111,21 +111,21 @@ export const LoginPage: React.FC = () => {
   const isMockClient = !googleClientId || googleClientId.includes('mock-google-client-id');
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white border border-slate-200/80 rounded-2xl p-8 shadow-xl space-y-6">
+    <div className="min-h-screen bg-[#f8f9fa] dark:bg-[#09090b] flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-8 shadow-xl space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
-          <div className="w-12 h-12 bg-slate-900 text-white rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+          <div className="w-12 h-12 bg-slate-900 dark:bg-white text-white dark:text-black rounded-2xl flex items-center justify-center mx-auto shadow-sm">
             <ShieldCheck className="w-7 h-7" />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 m-0 tracking-tight">XION-PAY ADMIN</h1>
-          <p className="text-xs text-slate-500">
+          <h1 className="text-xl font-bold text-slate-900 dark:text-white m-0 tracking-tight">XION-PAY ADMIN</h1>
+          <p className="text-xs text-slate-500 dark:text-zinc-400">
             Portal administrativo POS y conciliación. Acceso seguro.
           </p>
         </div>
 
         {error && (
-          <div className="bg-rose-50 border border-rose-200 text-rose-700 text-xs p-3 rounded-xl flex items-center space-x-2">
+          <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 text-xs p-3 rounded-xl flex items-center space-x-2">
             <ShieldAlert className="w-4 h-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -133,7 +133,7 @@ export const LoginPage: React.FC = () => {
 
         {/* Google OAuth Section */}
         <div className="space-y-3">
-          <label className="text-[11px] font-semibold text-slate-700 block">
+          <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300 block">
             Autenticación con Google Workspace / Gmail:
           </label>
 
@@ -159,7 +159,7 @@ export const LoginPage: React.FC = () => {
                 }
               }}
               disabled={loading}
-              className="w-full flex items-center justify-center space-x-2 bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 font-medium py-2.5 px-4 rounded-xl text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center space-x-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 border border-slate-300 dark:border-zinc-700 font-medium py-2.5 px-4 rounded-xl text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-50"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path
@@ -191,32 +191,32 @@ export const LoginPage: React.FC = () => {
         </div>
 
         <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-slate-200"></div>
-          <span className="flex-shrink mx-4 text-[10px] uppercase font-mono text-slate-400">
+          <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+          <span className="flex-shrink mx-4 text-[10px] uppercase font-mono text-slate-400 dark:text-zinc-500">
             o Acceso Rápido / Local
           </span>
-          <div className="flex-grow border-t border-slate-200"></div>
+          <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
         </div>
 
         {/* 1-Click Bypass Button */}
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl space-y-2.5">
-          <div className="flex items-center space-x-2 text-amber-800">
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-4 rounded-2xl space-y-2.5">
+          <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300">
             <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
             <span className="text-xs font-bold uppercase tracking-wider">
               Acceso Directo / Bypass Rápido
             </span>
           </div>
-          <p className="text-[11px] text-slate-600">
+          <p className="text-[11px] text-slate-600 dark:text-zinc-300">
             Ingresa al panel administrativo en 1 clic utilizando el perfil maestro{' '}
-            <code className="text-amber-900 bg-amber-100/80 px-1 py-0.5 rounded font-mono text-[10px]">admin@xionpay.internal</code>.
+            <code className="text-amber-900 dark:text-amber-200 bg-amber-100/80 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono text-[10px]">admin@xionpay.internal</code>.
           </p>
           <button
             type="button"
             onClick={() => executeBypass('admin@xionpay.internal')}
             disabled={loading}
-            className="w-full py-2.5 bg-[#18181b] hover:bg-black text-white font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+            className="w-full py-2.5 bg-[#18181b] dark:bg-white hover:bg-black dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
           >
-            <Zap className="w-4 h-4 fill-white" />
+            <Zap className="w-4 h-4 fill-white dark:fill-black" />
             <span>{loading ? 'Conectando...' : 'Bypass Login (Entrar como Superadmin)'}</span>
           </button>
         </div>

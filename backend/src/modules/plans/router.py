@@ -7,8 +7,66 @@ from src.core.security import get_current_admin, require_role
 from src.modules.auth.models import AdminUser
 from src.modules.plans.schemas import PlanCreate, PlanUpdate, PlanResponse
 from src.modules.plans.service import PlanService
+from src.modules.settings.service import SettingsService
 
 router = APIRouter(prefix="/plans", tags=["Planes y Tarifas"])
+
+
+@router.get("/catalog")
+async def get_plans_catalog(
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Catálogo público de planes y coordenadas de pago para Xion-Manager.
+    Retorna precios calculados en USD y VES (tasa BCV) junto a las cuentas receptoras.
+    """
+    plans = await PlanService.list_plans(db, active_only=True)
+    settings_data = await SettingsService.get_settings(db)
+    rate = settings_data.usd_ves_rate
+
+    payment_methods = {
+        "pago_movil": {
+            "banco": "0102 - Banco de Venezuela",
+            "telefono": "+584141234567",
+            "documento_identidad": "J-50123456-7",
+            "titular": "Xion Technologies C.A.",
+        },
+        "transferencia_ves": {
+            "banco": "0134 - Banesco Banco Universal",
+            "numero_cuenta": "0134-1092-23-0001234567",
+            "documento_identidad": "J-50123456-7",
+            "titular": "Xion Technologies C.A.",
+        },
+        "zelle": {
+            "correo": "pagos@xionpay.com",
+            "titular": "Xion Global LLC",
+        },
+    }
+
+    catalog = []
+    for p in plans:
+        price_usd = float(p.price_usd)
+        price_ves = round(price_usd * rate, 2)
+        catalog.append({
+            "id": str(p.id),
+            "code": p.code,
+            "name": p.name,
+            "description": p.description,
+            "price_usd": price_usd,
+            "price_ves": price_ves,
+            "quarterly_discount_pct": float(p.quarterly_discount_pct),
+            "annual_discount_pct": float(p.annual_discount_pct),
+            "max_branches": p.max_branches,
+            "max_pos_registers": p.max_pos_registers,
+            "features": p.features,
+        })
+
+    return {
+        "status": "success",
+        "exchange_rate_usd_ves": rate,
+        "plans": catalog,
+        "payment_methods": payment_methods,
+    }
 
 
 @router.get("", response_model=List[PlanResponse])

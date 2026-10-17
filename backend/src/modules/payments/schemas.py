@@ -7,9 +7,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class PaymentReportCreate(BaseModel):
     tenant_id: uuid.UUID
     origin_bank: str = Field(..., max_length=100, description="Ej: Banesco, Mercantil, Pago Móvil, Zelle")
+    destination_bank: Optional[str] = Field("Banesco Xion-Pay (0134-****-1234)", max_length=150, description="Cuenta receptora o banco de destino")
+    payment_method_type: Optional[str] = Field("pago_movil", max_length=50, description="'pago_movil', 'transferencia', 'zelle', 'efectivo'")
     reference_number: str = Field(..., max_length=100)
     amount: float = Field(..., gt=0.0)
     currency: str = Field(default="USD", max_length=10)
+    exchange_rate: Optional[float] = Field(None, gt=0.0, description="Tasa de cambio personalizada (opcional, si se omite usa la del sistema)")
     proof_attachment_url: str = Field(..., description="URL o Data URI del comprobante de pago")
     metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
@@ -21,9 +24,14 @@ class PaymentReportResponse(BaseModel):
     tenant_id: uuid.UUID
     subscription_id: uuid.UUID
     origin_bank: str
+    destination_bank: Optional[str] = None
+    payment_method_type: Optional[str] = "pago_movil"
     reference_number: str
     amount: float
     currency: str
+    exchange_rate: float = 1.0
+    amount_usd: float = 0.0
+    amount_ves: float = 0.0
     proof_attachment_url: str
     status: str
     rejection_reason: Optional[str] = None
@@ -35,7 +43,12 @@ class PaymentReportResponse(BaseModel):
     # Extra populated fields for UI inbox split view
     tenant_commercial_name: Optional[str] = None
     tenant_tax_id: Optional[str] = None
+    tenant_phone: Optional[str] = None
+    tenant_email: Optional[str] = None
+    tenant_contact_name: Optional[str] = None
     plan_name: Optional[str] = None
+    plan_price: Optional[float] = None
+    tenant_wallet_balance: Optional[float] = None
 
 
 class PaymentReportResult(BaseModel):

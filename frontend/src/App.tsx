@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
+import { PreferencesProvider } from './context/PreferencesContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
+import { PreferencesModal } from './components/PreferencesModal';
 import { SettingsModal } from './components/SettingsModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { ReconciliationPage } from './pages/ReconciliationPage';
 import { TenantsPage } from './pages/TenantsPage';
 import { PlansPage } from './pages/PlansPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { api } from './services/api';
 import type { SystemSettings } from './types';
@@ -18,6 +21,7 @@ const MainLayout: React.FC = () => {
   const { lastEventTimestamp } = useNotifications();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState<boolean>(false);
   const [currentRate, setCurrentRate] = useState<number>(36.50);
   const [rateUpdatedTrigger, setRateUpdatedTrigger] = useState<number>(0);
 
@@ -35,8 +39,8 @@ const MainLayout: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+      <div className="min-h-screen bg-[#f8f9fa] dark:bg-[#09090b] flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900 dark:border-white"></div>
       </div>
     );
   }
@@ -51,8 +55,12 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f8f9fa] text-slate-900 flex flex-col">
-      <Header currentRate={currentRate} onOpenSettings={() => setIsSettingsOpen(true)} />
+    <div className="min-h-screen bg-[#f8f9fa] dark:bg-[#09090b] text-slate-900 dark:text-zinc-100 flex flex-col transition-colors">
+      <Header
+        currentRate={currentRate}
+        onOpenSettings={() => setCurrentTab('settings')}
+        onOpenPreferences={() => setIsPreferencesOpen(true)}
+      />
 
       <div className="flex flex-1">
         <Sidebar currentTab={currentTab} setCurrentTab={setCurrentTab} />
@@ -72,6 +80,13 @@ const MainLayout: React.FC = () => {
           {currentTab === 'tenants' && <TenantsPage />}
 
           {currentTab === 'plans' && <PlansPage />}
+
+          {currentTab === 'settings' && (
+            <SettingsPage
+              onRateUpdated={handleRateUpdated}
+              onOpenPreferences={() => setIsPreferencesOpen(true)}
+            />
+          )}
         </main>
       </div>
 
@@ -82,17 +97,24 @@ const MainLayout: React.FC = () => {
         onClose={() => setIsSettingsOpen(false)}
         onRateUpdated={handleRateUpdated}
       />
+
+      <PreferencesModal
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
+      />
     </div>
   );
 };
 
 export function App() {
   return (
-    <AuthProvider>
-      <NotificationProvider>
-        <MainLayout />
-      </NotificationProvider>
-    </AuthProvider>
+    <PreferencesProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <MainLayout />
+        </NotificationProvider>
+      </AuthProvider>
+    </PreferencesProvider>
   );
 }
 

@@ -24,6 +24,9 @@ class Tenant(Base):
     courtesy_days_granted = Column(Integer, default=0, nullable=False)
     crm_lead_source = Column(String(100), nullable=True, default="manual")  # 'xion-manager', 'manual', 'landing'
     crm_notes = Column(Text, nullable=True)
+    wallet_balance = Column(Numeric(12, 2), default=0.00, nullable=False)  # Saldo en USD disponible para débitos automáticos
+    delivery_channel = Column(String(50), default="email", nullable=False)  # 'email', 'whatsapp', 'telegram', 'all'
+    telegram_chat_id = Column(String(100), nullable=True)  # Chat ID o alias para despacho por Telegram
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc), nullable=False)
 

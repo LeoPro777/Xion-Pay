@@ -30,8 +30,11 @@ class TenantBase(BaseModel):
     webhook_url: Optional[str] = None
     webhook_secret: Optional[str] = None
     status: str = Field(default="trial", description="'trial', 'active', 'frozen', 'suspended'")
+    wallet_balance: float = Field(default=0.00, ge=0.0, description="Saldo prepagado / a favor en USD")
+    delivery_channel: str = Field(default="email", description="Canal de entrega de notas de cobro: 'email', 'whatsapp', 'telegram', 'all'")
+    telegram_chat_id: Optional[str] = Field(None, max_length=100, description="Chat ID o alias en Telegram para notas de entrega")
 
-    @field_validator("tax_id", "contact_name", "id_doc_number", "webhook_url", "webhook_secret", mode="before")
+    @field_validator("tax_id", "contact_name", "id_doc_number", "webhook_url", "webhook_secret", "telegram_chat_id", mode="before")
     @classmethod
     def empty_str_to_none(cls, v: Any) -> Any:
         if isinstance(v, str) and not v.strip():
@@ -64,6 +67,9 @@ class TenantUpdate(BaseModel):
     webhook_secret: Optional[str] = None
     crm_notes: Optional[str] = None
     status: Optional[str] = Field(None, description="'active', 'trial', 'frozen', 'suspended'")
+    wallet_balance: Optional[float] = Field(None, ge=0.0, description="Ajuste manual de saldo en USD")
+    delivery_channel: Optional[str] = Field(None, description="'email', 'whatsapp', 'telegram', 'all'")
+    telegram_chat_id: Optional[str] = None
 
     @field_validator(
         "tax_id",
@@ -75,6 +81,8 @@ class TenantUpdate(BaseModel):
         "webhook_secret",
         "crm_notes",
         "status",
+        "delivery_channel",
+        "telegram_chat_id",
         mode="before",
     )
     @classmethod
@@ -83,6 +91,21 @@ class TenantUpdate(BaseModel):
             return None
         return v
 
+
+class TenantBalanceRecharge(BaseModel):
+    amount: float = Field(..., gt=0.0, description="Monto en USD a recargar en la billetera")
+    reason: Optional[str] = Field("Abono administrativo a favor", description="Motivo de la recarga")
+    auto_renew: bool = Field(default=True, description="Si tiene saldo suficiente y suscripción vencida, renueva automáticamente")
+
+
+class TenantBalanceResponse(BaseModel):
+    tenant_id: uuid.UUID
+    previous_balance: float
+    credited_amount: float
+    current_balance: float
+    auto_renewed: bool
+    new_period_end: Optional[datetime] = None
+    message: str
 
 
 class TenantStatusUpdate(BaseModel):
@@ -93,6 +116,7 @@ class TenantStatusUpdate(BaseModel):
 class CourtesyDaysRequest(BaseModel):
     days: int = Field(..., ge=1, le=90, description="Número de días de cortesía a otorgar")
     reason: Optional[str] = None
+
 
 
 class LicenseTokenResponse(BaseModel):
@@ -215,6 +239,12 @@ class TenantDetailResponse(TenantBase):
     crm_notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    next_billing_date: Optional[datetime] = None
+    countdown_seconds: Optional[int] = None
+    countdown_days: Optional[int] = None
+    countdown_hours: Optional[int] = None
+    is_due: bool = False
+    in_grace_period: bool = False
     active_subscription: Optional[SubscriptionResponse] = None
     latest_license: Optional[LicenseTokenResponse] = None
     fiscal_profile: Optional[FiscalProfileResponse] = None
@@ -237,7 +267,17 @@ class TenantListItemResponse(BaseModel):
     courtesy_days_granted: int
     crm_lead_source: Optional[str] = "manual"
     activo_seniat: bool = False
+    wallet_balance: float = 0.00
+    delivery_channel: str = "email"
+    telegram_chat_id: Optional[str] = None
     created_at: datetime
     active_plan_name: Optional[str] = None
+    active_plan_price: Optional[float] = None
     subscription_status: Optional[str] = None
     subscription_expires_at: Optional[datetime] = None
+    next_billing_date: Optional[datetime] = None
+    countdown_seconds: Optional[int] = None
+    countdown_days: Optional[int] = None
+    countdown_hours: Optional[int] = None
+    is_due: bool = False
+    in_grace_period: bool = False

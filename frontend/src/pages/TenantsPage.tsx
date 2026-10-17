@@ -22,6 +22,9 @@ import {
   Lock,
   Edit3,
   PowerOff,
+  Wallet,
+  Zap,
+  RefreshCw,
 } from 'lucide-react';
 
 export const TenantsPage: React.FC = () => {
@@ -38,6 +41,15 @@ export const TenantsPage: React.FC = () => {
   const [showCourtesyModal, setShowCourtesyModal] = useState<boolean>(false);
   const [courtesyDays, setCourtesyDays] = useState<number>(7);
   const [courtesyReason, setCourtesyReason] = useState<string>('Soporte técnico preventivo');
+
+  // Recharge Balance Modal State
+  const [showRechargeModal, setShowRechargeModal] = useState<boolean>(false);
+  const [rechargeTenant, setRechargeTenant] = useState<TenantListItem | TenantDetail | null>(null);
+  const [rechargeAmount, setRechargeAmount] = useState<number>(29.0);
+  const [rechargeReason, setRechargeReason] = useState<string>('Abono en billetera cliente');
+  const [rechargeAutoRenew, setRechargeAutoRenew] = useState<boolean>(true);
+  const [recharging, setRecharging] = useState<boolean>(false);
+  const [processingCycle, setProcessingCycle] = useState<boolean>(false);
 
   // Fiscal Profile Form State
   const [fiscalData, setFiscalData] = useState<Partial<FiscalProfile>>({
@@ -76,6 +88,9 @@ export const TenantsPage: React.FC = () => {
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
   const [billingCycle, setBillingCycle] = useState<string>('monthly');
   const [grant30DayTrial, setGrant30DayTrial] = useState<boolean>(true);
+  const [walletBalance, setWalletBalance] = useState<number>(0.0);
+  const [deliveryChannel, setDeliveryChannel] = useState<string>('email');
+  const [telegramChatId, setTelegramChatId] = useState<string>('');
   const [showFiscalAccordion, setShowFiscalAccordion] = useState<boolean>(false);
 
   // Edit Client Modal State
@@ -93,7 +108,11 @@ export const TenantsPage: React.FC = () => {
     crm_notes: '',
     webhook_url: '',
     status: 'active',
+    wallet_balance: 0.0,
+    delivery_channel: 'email',
+    telegram_chat_id: '',
   });
+
 
   const fetchTenants = async () => {
     try {
@@ -147,6 +166,9 @@ export const TenantsPage: React.FC = () => {
         billing_cycle: billingCycle,
         trial_days: grant30DayTrial ? 30 : 0,
         status: grant30DayTrial ? 'trial' : 'active',
+        wallet_balance: walletBalance,
+        delivery_channel: deliveryChannel,
+        telegram_chat_id: telegramChatId.trim() || undefined,
       });
       setShowCreateModal(false);
       setContactName('');
@@ -155,6 +177,8 @@ export const TenantsPage: React.FC = () => {
       setOwnerEmail('');
       setOwnerPhone('');
       setWebhookUrl('');
+      setWalletBalance(0.0);
+      setTelegramChatId('');
       await fetchTenants();
     } catch (err: any) {
       console.error('Error creating client:', err.response?.data || err);
@@ -246,6 +270,9 @@ export const TenantsPage: React.FC = () => {
       crm_notes: (t as TenantDetail).crm_notes || '',
       webhook_url: (t as TenantDetail).webhook_url || '',
       status: t.status || 'active',
+      wallet_balance: t.wallet_balance ?? 0.0,
+      delivery_channel: t.delivery_channel || 'email',
+      telegram_chat_id: t.telegram_chat_id || '',
     });
     setShowEditModal(true);
   };
@@ -266,6 +293,9 @@ export const TenantsPage: React.FC = () => {
         crm_notes: editForm.crm_notes.trim() || undefined,
         webhook_url: editForm.webhook_url.trim() || undefined,
         status: editForm.status,
+        wallet_balance: editForm.wallet_balance,
+        delivery_channel: editForm.delivery_channel,
+        telegram_chat_id: editForm.telegram_chat_id.trim() || undefined,
       });
       setShowEditModal(false);
       await fetchTenants();
@@ -285,6 +315,65 @@ export const TenantsPage: React.FC = () => {
       alert(`Error al actualizar cliente:\n${msg}`);
     } finally {
       setSavingEdit(false);
+    }
+  };
+
+  const openRechargeModal = (t: TenantListItem | TenantDetail) => {
+    setRechargeTenant(t);
+    setRechargeAmount(t.active_plan_price && t.active_plan_price > 0 ? t.active_plan_price : 29.0);
+    setRechargeReason(`Recarga de saldo para ${t.commercial_name}`);
+    setRechargeAutoRenew(true);
+    setShowRechargeModal(true);
+  };
+
+  const handleRechargeBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rechargeTenant) return;
+    setRecharging(true);
+    try {
+      const res = await api.post(`/tenants/${rechargeTenant.id}/balance`, {
+        amount: rechargeAmount,
+        reason: rechargeReason,
+        auto_renew: rechargeAutoRenew,
+      });
+      alert(res.data.message);
+      setShowRechargeModal(false);
+      await fetchTenants();
+      if (selectedTenant && selectedTenant.id === rechargeTenant.id) {
+        await openTenantDetail(rechargeTenant.id);
+      }
+    } catch (err: any) {
+      alert(`Error al recargar saldo: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setRecharging(false);
+    }
+  };
+
+  const handleRenewFromBalance = async (tenantId: string, clientName?: string) => {
+    if (!window.confirm(`¿Desea debitar el costo del plan directamente de la billetera de "${clientName || 'este cliente'}" para renovar inmediatamente su suscripción y emitir su licencia criptográfica RS256?`)) return;
+    try {
+      await api.post(`/tenants/${tenantId}/renew-from-balance`);
+      alert('¡Suscripción renovada exitosamente! Licencia emitida y nota de entrega despachada al canal configurado.');
+      await fetchTenants();
+      if (selectedTenant && selectedTenant.id === tenantId) {
+        await openTenantDetail(tenantId);
+      }
+    } catch (err: any) {
+      alert(`Error al renovar suscripción desde saldo: ${err.response?.data?.message || err.message}`);
+    }
+  };
+
+  const handleProcessCycle = async () => {
+    if (!window.confirm('¿Desea procesar el ciclo de facturación y cobro automático ahora?\n- Si el cliente tiene saldo suficiente, su suscripción se renueva y se debita el monto.\n- Si reportó un pago o está en prórroga, se mantiene activo.\n- Si está vencido sin saldo, se suspende automáticamente.')) return;
+    setProcessingCycle(true);
+    try {
+      const res = await api.post('/tenants/billing/process-cycle');
+      alert(`Ciclo de cobro ejecutado exitosamente:\n✅ Renovados automáticamente con saldo: ${res.data.renewed_count}\n⏱️ Comercios mantenidos en prórroga: ${res.data.grace_period_count}\n🚫 Suspendidos por saldo insuficiente: ${res.data.suspended_count}`);
+      await fetchTenants();
+    } catch (err: any) {
+      alert(`Error ejecutando ciclo: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setProcessingCycle(false);
     }
   };
 
@@ -364,13 +453,25 @@ export const TenantsPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="px-4 py-2.5 bg-[#18181b] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl flex items-center space-x-2 transition-all shadow-xs cursor-pointer self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4 text-emerald-400" />
-          <span>Nuevo Cliente</span>
-        </button>
+        <div className="flex items-center space-x-2 self-start sm:self-auto">
+          <button
+            onClick={handleProcessCycle}
+            disabled={processingCycle}
+            className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl flex items-center space-x-2 transition-all cursor-pointer border border-slate-300 disabled:opacity-50"
+            title="Ejecutar ciclo de cobro automático (renueva con saldo y suspende vencidos sin saldo)"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${processingCycle ? 'animate-spin text-accent' : 'text-slate-600'}`} />
+            <span>{processingCycle ? 'Procesando Ciclo...' : 'Ciclo de Cobro Auto'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowCreateModal(true)}
+            className="px-4 py-2.5 bg-accent text-xs font-semibold rounded-xl flex items-center space-x-2 transition-all shadow-xs cursor-pointer hover:opacity-90"
+          >
+            <PlusCircle className="w-4 h-4 text-[var(--accent-fg)]" />
+            <span>Nuevo Cliente</span>
+          </button>
+        </div>
       </div>
 
       {/* CRM Metric Badges */}
@@ -457,8 +558,10 @@ export const TenantsPage: React.FC = () => {
               <tr>
                 <th className="py-3 px-4">Cliente / Suscriptor</th>
                 <th className="py-3 px-4">Identificación</th>
-                <th className="py-3 px-4">Contacto & WhatsApp</th>
-                <th className="py-3 px-4">Estado CRM / Trial</th>
+                <th className="py-3 px-4">Saldo Billetera</th>
+                <th className="py-3 px-4">Plan & Conteo Regresivo</th>
+                <th className="py-3 px-4">Estado CRM</th>
+                <th className="py-3 px-4">Canal Nota</th>
                 <th className="py-3 px-4">Régimen SENIAT</th>
                 <th className="py-3 px-4 text-right">Acción</th>
               </tr>
@@ -466,14 +569,14 @@ export const TenantsPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-10 text-slate-500">
+                  <td colSpan={8} className="text-center py-10 text-slate-500">
                     <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-slate-900 mb-2"></div>
                     <p>Cargando directorio de clientes...</p>
                   </td>
                 </tr>
               ) : tenants.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-slate-500">
+                  <td colSpan={8} className="text-center py-12 text-slate-500">
                     <Building2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                     <p className="font-semibold text-slate-700">No se encontraron clientes registrados</p>
                     <p className="text-[11px] text-slate-400 mt-0.5">
@@ -485,7 +588,7 @@ export const TenantsPage: React.FC = () => {
                 tenants.map((t) => {
                   const isTrial = t.status === 'trial';
                   const daysRem = t.trial_days_remaining ?? 0;
-                  const waNumber = t.owner_phone ? t.owner_phone.replace(/\D/g, '') : '';
+                  const hasSufficientBalance = (t.wallet_balance ?? 0) >= (t.active_plan_price ?? 29.0);
 
                   return (
                     <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
@@ -514,25 +617,58 @@ export const TenantsPage: React.FC = () => {
                         </span>
                       </td>
 
+                      {/* Billetera y Saldo */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-0.5">
-                          <span className="text-slate-800 block font-mono text-[11px]">{t.owner_email}</span>
-                          {waNumber ? (
-                            <a
-                              href={`https://wa.me/${waNumber}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center space-x-1 text-[11px] font-semibold text-emerald-600 hover:text-emerald-700 hover:underline"
-                            >
-                              <MessageCircle className="w-3 h-3 text-emerald-500" />
-                              <span>{t.owner_phone}</span>
-                            </a>
+                        <div className="flex items-center space-x-1.5">
+                          <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg border ${
+                            (t.wallet_balance ?? 0) > 0
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-slate-100 text-slate-700 border-slate-200'
+                          }`}>
+                            ${(t.wallet_balance ?? 0).toFixed(2)} USD
+                          </span>
+                          <button
+                            onClick={() => openRechargeModal(t)}
+                            className="p-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-colors cursor-pointer"
+                            title="Recargar saldo en billetera"
+                          >
+                            <Wallet className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+
+                      {/* Plan y Conteo Regresivo */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-1 text-slate-800 font-semibold text-[11px]">
+                            <span>{t.active_plan_name || 'Plan Estándar'}</span>
+                            {t.active_plan_price !== undefined && t.active_plan_price > 0 && (
+                              <span className="text-slate-500 font-mono text-[10px]">(${t.active_plan_price.toFixed(2)})</span>
+                            )}
+                          </div>
+
+                          {t.in_grace_period ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 animate-pulse">
+                              <Clock className="w-3 h-3 text-amber-500" />
+                              <span>Prórroga activa</span>
+                            </span>
+                          ) : t.is_due ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300">
+                              <Clock className="w-3 h-3 text-rose-500" />
+                              <span>¡Cobro Vencido!</span>
+                            </span>
+                          ) : t.countdown_days !== undefined ? (
+                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              <Clock className="w-3 h-3 text-emerald-600" />
+                              <span>Cobro en: {t.countdown_days}d {t.countdown_hours ?? 0}h</span>
+                            </span>
                           ) : (
-                            <span className="text-[11px] text-slate-400">{t.owner_phone}</span>
+                            <span className="text-[10px] text-slate-400 font-mono">Sin ciclo</span>
                           )}
                         </div>
                       </td>
 
+                      {/* Estado CRM */}
                       <td className="py-3.5 px-4">
                         {isTrial ? (
                           <div className="space-y-1">
@@ -547,14 +683,21 @@ export const TenantsPage: React.FC = () => {
                         ) : t.status === 'active' ? (
                           <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                            <span>Activo (Suscrito)</span>
+                            <span>Activo</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                             <PowerOff className="w-3 h-3 text-rose-500" />
-                            <span>Desactivado ({t.status})</span>
+                            <span>Suspendido</span>
                           </span>
                         )}
+                      </td>
+
+                      {/* Canal Nota de Entrega */}
+                      <td className="py-3.5 px-4">
+                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                          {t.delivery_channel === 'whatsapp' ? '💬 WhatsApp' : t.delivery_channel === 'telegram' ? '✈️ Telegram' : t.delivery_channel === 'all' ? '🌐 Todos' : '📧 Email'}
+                        </span>
                       </td>
 
                       <td className="py-3.5 px-4">
@@ -573,6 +716,16 @@ export const TenantsPage: React.FC = () => {
 
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end space-x-1.5">
+                          {(t.is_due || t.status === 'suspended') && hasSufficientBalance && (
+                            <button
+                              onClick={() => handleRenewFromBalance(t.id, t.commercial_name)}
+                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold rounded-xl transition-all shadow-xs flex items-center space-x-1 cursor-pointer"
+                              title="Renovar suscripción debitando saldo acumulado"
+                            >
+                              <Zap className="w-3 h-3" />
+                              <span>Renovar</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => openTenantDetail(t.id)}
                             className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
@@ -611,19 +764,19 @@ export const TenantsPage: React.FC = () => {
 
       {/* Slide-over Drawer / Ficha Completa del Cliente */}
       {selectedTenant && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex justify-end z-50">
-          <div className="bg-white border-l border-slate-200 w-full max-w-xl h-full p-6 overflow-y-auto space-y-6 shadow-2xl flex flex-col justify-between">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex justify-end z-50">
+          <div className="bg-white dark:bg-[#121215] border-l border-slate-200 dark:border-zinc-800 w-full max-w-xl h-full p-6 overflow-y-auto space-y-6 shadow-2xl flex flex-col justify-between text-slate-900 dark:text-white transition-colors">
             <div className="space-y-5">
               {/* Drawer Header */}
-              <div className="flex items-start justify-between pb-4 border-b border-slate-100">
+              <div className="flex items-start justify-between pb-4 border-b border-slate-100 dark:border-zinc-800">
                 <div className="space-y-1">
                   <div className="flex items-center space-x-2">
-                    <span className="text-lg font-bold text-slate-900">{selectedTenant.commercial_name}</span>
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-100 text-slate-700">
+                    <span className="text-lg font-bold text-slate-900 dark:text-white">{selectedTenant.commercial_name}</span>
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300">
                       {selectedTenant.id_doc_type || 'V'}-{selectedTenant.id_doc_number || selectedTenant.tax_id}
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 flex items-center space-x-2">
+                  <p className="text-xs text-slate-500 dark:text-zinc-400 flex items-center space-x-2">
                     <span>Contacto: <strong>{selectedTenant.contact_name || 'No especificado'}</strong></span>
                     <span>•</span>
                     <span>Origen: <strong>{selectedTenant.crm_lead_source || 'manual'}</strong></span>
@@ -632,20 +785,20 @@ export const TenantsPage: React.FC = () => {
 
                 <button
                   onClick={() => setSelectedTenant(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
+                  className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center transition-colors cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Navigation Tabs */}
-              <div className="flex border-b border-slate-100 space-x-4 text-xs font-semibold">
+              <div className="flex border-b border-slate-100 dark:border-zinc-800 space-x-4 text-xs font-semibold">
                 <button
                   onClick={() => setActiveDrawerTab('profile')}
                   className={`pb-2.5 transition-colors cursor-pointer ${
                     activeDrawerTab === 'profile'
-                      ? 'text-slate-900 border-b-2 border-slate-900 font-bold'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'text-accent border-b-2 border-accent font-bold'
+                      : 'text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-200'
                   }`}
                 >
                   Operativo & CRM
@@ -655,8 +808,8 @@ export const TenantsPage: React.FC = () => {
                   onClick={() => setActiveDrawerTab('fiscal')}
                   className={`pb-2.5 transition-colors cursor-pointer flex items-center space-x-1.5 ${
                     activeDrawerTab === 'fiscal'
-                      ? 'text-slate-900 border-b-2 border-slate-900 font-bold'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'text-accent border-b-2 border-accent font-bold'
+                      : 'text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-200'
                   }`}
                 >
                   <FileText className="w-3.5 h-3.5" />
@@ -670,8 +823,8 @@ export const TenantsPage: React.FC = () => {
                   onClick={() => setActiveDrawerTab('comprobantes')}
                   className={`pb-2.5 transition-colors cursor-pointer flex items-center space-x-1.5 ${
                     activeDrawerTab === 'comprobantes'
-                      ? 'text-slate-900 border-b-2 border-slate-900 font-bold'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'text-accent border-b-2 border-accent font-bold'
+                      : 'text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-200'
                   }`}
                 >
                   <Receipt className="w-3.5 h-3.5" />
@@ -682,8 +835,8 @@ export const TenantsPage: React.FC = () => {
                   onClick={() => setActiveDrawerTab('webhooks')}
                   className={`pb-2.5 transition-colors cursor-pointer flex items-center space-x-1.5 ${
                     activeDrawerTab === 'webhooks'
-                      ? 'text-slate-900 border-b-2 border-slate-900 font-bold'
-                      : 'text-slate-400 hover:text-slate-600'
+                      ? 'text-accent border-b-2 border-accent font-bold'
+                      : 'text-slate-400 dark:text-zinc-400 hover:text-slate-600 dark:hover:text-zinc-200'
                   }`}
                 >
                   <Radio className="w-3.5 h-3.5" />
@@ -780,30 +933,101 @@ export const TenantsPage: React.FC = () => {
                     )}
                   </div>
 
-                  {/* Active Subscription Contract */}
+                  {/* Wallet Balance & Automated Renewal Card */}
+                  <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-3 text-xs">
+                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                      <div className="flex items-center space-x-2">
+                        <Wallet className="w-4 h-4 text-emerald-600" />
+                        <h4 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider">
+                          Billetera del Cliente & Débito Automático
+                        </h4>
+                      </div>
+                      <span className="font-mono font-extrabold text-sm text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-lg">
+                        ${(selectedTenant.wallet_balance ?? 0).toFixed(2)} USD
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-slate-700">
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Canal de Nota de Entrega:</span>
+                        <strong className="text-slate-800 uppercase flex items-center space-x-1">
+                          <span>
+                            {selectedTenant.delivery_channel === 'whatsapp' ? '💬 WhatsApp' : selectedTenant.delivery_channel === 'telegram' ? '✈️ Telegram' : selectedTenant.delivery_channel === 'all' ? '🌐 Todos los Canales' : '📧 Correo Electrónico'}
+                          </span>
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 block text-[10px]">Chat ID Telegram:</span>
+                        <strong className="text-slate-800 font-mono">
+                          {selectedTenant.telegram_chat_id || 'No configurado'}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <button
+                        onClick={() => openRechargeModal(selectedTenant)}
+                        className="flex-1 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 text-xs font-semibold rounded-xl cursor-pointer transition-colors flex items-center justify-center space-x-1"
+                      >
+                        <Wallet className="w-3.5 h-3.5" />
+                        <span>Abonar Saldo</span>
+                      </button>
+
+                      {((selectedTenant.is_due || selectedTenant.status === 'suspended') && (selectedTenant.wallet_balance ?? 0) >= (selectedTenant.active_plan_price ?? 29.0)) && (
+                        <button
+                          onClick={() => handleRenewFromBalance(selectedTenant.id, selectedTenant.commercial_name)}
+                          className="flex-1 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl cursor-pointer transition-all shadow-xs flex items-center justify-center space-x-1"
+                        >
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Renovar con Saldo</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Active Subscription Contract & Countdown */}
                   {selectedTenant.active_subscription && (
                     <div className="bg-white border border-slate-200/80 rounded-2xl p-4 space-y-2 text-xs">
-                      <h4 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider flex items-center space-x-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Suscripción Asignada</span>
-                      </h4>
+                      <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                        <h4 className="font-bold text-slate-900 uppercase text-[11px] tracking-wider flex items-center space-x-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-slate-500" />
+                          <span>Suscripción & Conteo Regresivo</span>
+                        </h4>
+                        {selectedTenant.in_grace_period ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 animate-pulse">
+                            ⏱️ Prórroga 48h activa
+                          </span>
+                        ) : selectedTenant.is_due ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300">
+                            🚨 Cobro Vencido
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            ⏳ {selectedTenant.countdown_days ?? 0}d {selectedTenant.countdown_hours ?? 0}h restantes
+                          </span>
+                        )}
+                      </div>
+
                       <div className="grid grid-cols-2 gap-2 pt-1 text-slate-700">
                         <div>
-                          <span className="text-slate-400 block text-[10px]">Plan:</span>
-                          <strong>{selectedTenant.active_subscription.plan?.name}</strong>
+                          <span className="text-slate-400 block text-[10px]">Plan Actual:</span>
+                          <strong>
+                            {selectedTenant.active_subscription.plan?.name}
+                            {selectedTenant.active_subscription.plan?.price_usd ? ` ($${selectedTenant.active_subscription.plan.price_usd} USD)` : ''}
+                          </strong>
                         </div>
                         <div>
                           <span className="text-slate-400 block text-[10px]">Ciclo:</span>
                           <strong className="capitalize">{selectedTenant.active_subscription.billing_cycle}</strong>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px]">Vigencia hasta:</span>
+                          <span className="text-slate-400 block text-[10px]">Próximo Cobro:</span>
                           <strong className="text-emerald-600 font-mono">
                             {new Date(selectedTenant.active_subscription.current_period_end).toLocaleDateString()}
                           </strong>
                         </div>
                         <div>
-                          <span className="text-slate-400 block text-[10px]">Cortesías acumuladas:</span>
+                          <span className="text-slate-400 block text-[10px]">Cortesías concedidas:</span>
                           <strong className="text-amber-600">{selectedTenant.courtesy_days_granted} días</strong>
                         </div>
                       </div>
@@ -1148,18 +1372,18 @@ export const TenantsPage: React.FC = () => {
 
       {/* Emit Comprobante Modal */}
       {showComprobanteModal && selectedTenant && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
-                <Receipt className="w-4 h-4 text-slate-700" />
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#121215] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-slate-900 dark:text-white transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                <Receipt className="w-4 h-4 text-accent" />
                 <span>
                   {fiscalData.activo_seniat ? 'Generar Factura Fiscal SENIAT' : 'Generar Recibo de Cobro (MVP)'}
                 </span>
               </h3>
               <button
                 onClick={() => setShowComprobanteModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1167,25 +1391,25 @@ export const TenantsPage: React.FC = () => {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-medium text-slate-700 block mb-1">Monto en Divisa (USD):</label>
+                <label className="font-medium text-slate-700 dark:text-zinc-300 block mb-1">Monto en Divisa (USD):</label>
                 <input
                   type="number"
                   step="0.01"
                   min="0"
                   value={comprobanteMontoUsd}
                   onChange={(e) => setComprobanteMontoUsd(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               <div>
-                <label className="font-medium text-slate-700 block mb-1">Tasa Oficial BCV (VES/USD):</label>
+                <label className="font-medium text-slate-700 dark:text-zinc-300 block mb-1">Tasa Oficial BCV (VES/USD):</label>
                 <input
                   type="number"
                   step="0.01"
                   value={comprobanteTasaBcv}
                   onChange={(e) => setComprobanteTasaBcv(parseFloat(e.target.value) || 0)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
 
@@ -1195,15 +1419,15 @@ export const TenantsPage: React.FC = () => {
                   id="aplica_igtf_modal"
                   checked={comprobanteAplicaIgtf}
                   onChange={(e) => setComprobanteAplicaIgtf(e.target.checked)}
-                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-900"
+                  className="rounded border-slate-300 dark:border-zinc-700 text-accent focus:ring-accent"
                 />
-                <label htmlFor="aplica_igtf_modal" className="text-slate-700 text-xs">
+                <label htmlFor="aplica_igtf_modal" className="text-slate-700 dark:text-zinc-300 text-xs cursor-pointer">
                   Aplica 3% IGTF (Cobro en divisas en efectivo/cripto)
                 </label>
               </div>
 
               {/* Calculations Preview */}
-              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 space-y-1 text-slate-600">
+              <div className="bg-slate-50 dark:bg-zinc-900/60 border border-slate-200/80 dark:border-zinc-800 rounded-xl p-3 space-y-1 text-slate-600 dark:text-zinc-300">
                 <div className="flex justify-between">
                   <span>Base Imponible:</span>
                   <span className="font-mono">Bs. {(comprobanteMontoUsd * comprobanteTasaBcv).toFixed(2)}</span>
@@ -1222,7 +1446,7 @@ export const TenantsPage: React.FC = () => {
                     </span>
                   </div>
                 )}
-                <div className="flex justify-between font-bold text-slate-900 border-t border-slate-200 pt-1 mt-1">
+                <div className="flex justify-between font-bold text-slate-900 dark:text-white border-t border-slate-200 dark:border-zinc-800 pt-1 mt-1">
                   <span>Total en Bolívares:</span>
                   <span className="font-mono">
                     Bs.{' '}
@@ -1239,7 +1463,7 @@ export const TenantsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowComprobanteModal(false)}
-                  className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+                  className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1247,7 +1471,7 @@ export const TenantsPage: React.FC = () => {
                   type="button"
                   onClick={handleGenerateComprobante}
                   disabled={generatingComprobante || comprobanteMontoUsd <= 0}
-                  className="px-4 py-2 bg-[#18181b] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 bg-accent hover:opacity-90 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer"
                 >
                   {generatingComprobante ? 'Emitiendo...' : 'Emitir Comprobante'}
                 </button>
@@ -1259,13 +1483,13 @@ export const TenantsPage: React.FC = () => {
 
       {/* Courtesy Days Modal */}
       {showCourtesyModal && selectedTenant && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-bold text-slate-900">Otorgar Días de Prórroga</h3>
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#121215] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-sm w-full p-5 space-y-4 shadow-xl text-slate-900 dark:text-white transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">Otorgar Días de Prórroga</h3>
               <button
                 onClick={() => setShowCourtesyModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1273,24 +1497,24 @@ export const TenantsPage: React.FC = () => {
 
             <div className="space-y-3 text-xs">
               <div>
-                <label className="font-medium text-slate-700 block mb-1">Días a otorgar:</label>
+                <label className="font-medium text-slate-700 dark:text-zinc-300 block mb-1">Días a otorgar:</label>
                 <input
                   type="number"
                   min={1}
                   max={60}
                   value={courtesyDays}
                   onChange={(e) => setCourtesyDays(parseInt(e.target.value) || 1)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
 
               <div>
-                <label className="font-medium text-slate-700 block mb-1">Motivo administrativo:</label>
+                <label className="font-medium text-slate-700 dark:text-zinc-300 block mb-1">Motivo administrativo:</label>
                 <input
                   type="text"
                   value={courtesyReason}
                   onChange={(e) => setCourtesyReason(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
 
@@ -1298,14 +1522,14 @@ export const TenantsPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowCourtesyModal(false)}
-                  className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+                  className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="button"
                   onClick={handleGrantCourtesyDays}
-                  className="px-4 py-2 bg-[#18181b] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl cursor-pointer"
+                  className="px-4 py-2 bg-accent hover:opacity-90 text-white text-xs font-semibold rounded-xl cursor-pointer"
                 >
                   Confirmar Prórroga
                 </button>
@@ -1317,22 +1541,22 @@ export const TenantsPage: React.FC = () => {
 
       {/* Create Client Modal */}
       {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#121215] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-                  <User className="w-4 h-4 text-slate-700" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                  <User className="w-4 h-4 text-accent" />
                   <span>Nuevo Cliente (Registro sin Fricción)</span>
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
                   Alta ágil en MVP con soporte para otorgar 30 días de prueba gratuita automática.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center cursor-pointer"
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1341,52 +1565,52 @@ export const TenantsPage: React.FC = () => {
             <form onSubmit={handleCreateClient} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Nombre Comercial / Negocio:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Nombre Comercial / Negocio:</label>
                   <input
                     type="text"
                     required
                     value={commName}
                     onChange={(e) => setCommName(e.target.value)}
                     placeholder="ej: Bodegón Los Samanes"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Nombre de Contacto:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Nombre de Contacto:</label>
                   <input
                     type="text"
                     required
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
                     placeholder="ej: José Rodríguez"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Email (Login & Avisos):</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Email (Login & Avisos):</label>
                   <input
                     type="email"
                     required
                     value={ownerEmail}
                     onChange={(e) => setOwnerEmail(e.target.value)}
                     placeholder="contacto@bodegon.com"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">WhatsApp de Alertas:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">WhatsApp de Alertas:</label>
                   <input
                     type="text"
                     required
                     value={ownerPhone}
                     onChange={(e) => setOwnerPhone(e.target.value)}
                     placeholder="+58 412 1234567"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
@@ -1394,11 +1618,11 @@ export const TenantsPage: React.FC = () => {
               {/* Document Identity */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Tipo Documento:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Tipo Documento:</label>
                   <select
                     value={idDocType}
                     onChange={(e) => setIdDocType(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-bold focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="V">V (Cédula)</option>
                     <option value="J">J (RIF)</option>
@@ -1408,24 +1632,24 @@ export const TenantsPage: React.FC = () => {
                 </div>
 
                 <div className="col-span-2">
-                  <label className="font-semibold text-slate-700 block mb-1">Cédula o RIF Informal:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Cédula o RIF Informal:</label>
                   <input
                     type="text"
                     value={idDocNumber}
                     onChange={(e) => setIdDocNumber(e.target.value)}
                     placeholder="ej: 18456789 (Opcional en MVP)"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Plan Inicial:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Plan Inicial:</label>
                   <select
                     value={selectedPlanId}
                     onChange={(e) => setSelectedPlanId(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     {plans.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -1436,11 +1660,11 @@ export const TenantsPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Ciclo de Facturación:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Ciclo de Facturación:</label>
                   <select
                     value={billingCycle}
                     onChange={(e) => setBillingCycle(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="monthly">Mensual</option>
                     <option value="quarterly">Trimestral</option>
@@ -1449,13 +1673,56 @@ export const TenantsPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 30 Day Free Trial Toggle */}
-              <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3 flex items-center justify-between">
+              {/* Billetera Inicial y Canal de Notificación / Nota de Entrega */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <span className="font-bold text-amber-900 block text-xs">
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Saldo Inicial Billetera ($ USD):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={walletBalance}
+                    onChange={(e) => setWalletBalance(parseFloat(e.target.value) || 0)}
+                    placeholder="0.00"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Canal de Nota de Entrega:</label>
+                  <select
+                    value={deliveryChannel}
+                    onChange={(e) => setDeliveryChannel(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="email">📧 Correo Electrónico</option>
+                    <option value="whatsapp">💬 WhatsApp</option>
+                    <option value="telegram">✈️ Telegram</option>
+                    <option value="all">🌐 Todos los canales</option>
+                  </select>
+                </div>
+              </div>
+
+              {(deliveryChannel === 'telegram' || deliveryChannel === 'all') && (
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Chat ID de Telegram:</label>
+                  <input
+                    type="text"
+                    value={telegramChatId}
+                    onChange={(e) => setTelegramChatId(e.target.value)}
+                    placeholder="ej: 987654321 o @usuario"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+              )}
+
+              {/* 30 Day Free Trial Toggle */}
+              <div className="bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-800/60 rounded-2xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-amber-900 dark:text-amber-300 block text-xs">
                     Otorgar Prueba Gratuita de 30 Días
                   </span>
-                  <span className="text-[11px] text-amber-700">
+                  <span className="text-[11px] text-amber-700 dark:text-amber-400">
                     Genera la licencia criptográfica RS256 válida por 30 días para CRM & Monitoreo.
                   </span>
                 </div>
@@ -1463,45 +1730,45 @@ export const TenantsPage: React.FC = () => {
                   type="checkbox"
                   checked={grant30DayTrial}
                   onChange={(e) => setGrant30DayTrial(e.target.checked)}
-                  className="rounded border-amber-300 text-amber-600 focus:ring-amber-500 w-4 h-4"
+                  className="rounded border-amber-300 dark:border-amber-700 text-accent focus:ring-accent w-4 h-4"
                 />
               </div>
 
               {/* Collapsed Optional SENIAT section */}
-              <div className="border border-slate-200 rounded-xl overflow-hidden">
+              <div className="border border-slate-200 dark:border-zinc-800 rounded-xl overflow-hidden">
                 <button
                   type="button"
                   onClick={() => setShowFiscalAccordion(!showFiscalAccordion)}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 flex items-center justify-between text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-zinc-900/60 flex items-center justify-between text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   <span className="font-semibold text-xs flex items-center space-x-1.5">
-                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                    <FileText className="w-3.5 h-3.5 text-slate-500 dark:text-zinc-400" />
                     <span>Datos Fiscales SENIAT (Opcional - Permanecen Inactivos en MVP)</span>
                   </span>
                   {showFiscalAccordion ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                 </button>
 
                 {showFiscalAccordion && (
-                  <div className="p-3 bg-white space-y-2 text-xs border-t border-slate-100">
-                    <p className="text-[11px] text-slate-500">
+                  <div className="p-3 bg-white dark:bg-zinc-900 space-y-2 text-xs border-t border-slate-100 dark:border-zinc-800">
+                    <p className="text-[11px] text-slate-500 dark:text-zinc-400">
                       En el MVP, los datos fiscales no son necesarios para operar. Podrán completarse o activarse en cualquier momento desde la ficha del cliente.
                     </p>
                   </div>
                 )}
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+                  className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={creating || !commName || !ownerEmail || !ownerPhone}
-                  className="px-4 py-2 bg-[#18181b] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer"
+                  className="px-4 py-2 bg-accent hover:opacity-90 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer"
                 >
                   {creating ? 'Registrando...' : 'Crear Cliente'}
                 </button>
@@ -1513,22 +1780,22 @@ export const TenantsPage: React.FC = () => {
 
       {/* Edit Client Modal */}
       {showEditModal && editingTenant && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#121215] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl max-h-[90vh] overflow-y-auto text-slate-900 dark:text-white transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
               <div>
-                <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
-                  <Edit3 className="w-4 h-4 text-slate-700" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                  <Edit3 className="w-4 h-4 text-accent" />
                   <span>Editar Cliente (CRM)</span>
                 </h3>
-                <p className="text-[11px] text-slate-500 mt-0.5">
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
                   Modificación de datos operativos, información de contacto y estado de la cuenta.
                 </p>
               </div>
 
               <button
                 onClick={() => setShowEditModal(false)}
-                className="w-7 h-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center cursor-pointer hover:bg-slate-200"
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center cursor-pointer transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1537,48 +1804,48 @@ export const TenantsPage: React.FC = () => {
             <form onSubmit={handleSaveEdit} className="space-y-3.5 text-xs">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Nombre Comercial / Negocio:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Nombre Comercial / Negocio:</label>
                   <input
                     type="text"
                     required
                     value={editForm.commercial_name}
                     onChange={(e) => setEditForm({ ...editForm, commercial_name: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Nombre de Contacto:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Nombre de Contacto:</label>
                   <input
                     type="text"
                     value={editForm.contact_name}
                     onChange={(e) => setEditForm({ ...editForm, contact_name: e.target.value })}
                     placeholder="Persona responsable"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Email de Avisos:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Email de Avisos:</label>
                   <input
                     type="email"
                     required
                     value={editForm.owner_email}
                     onChange={(e) => setEditForm({ ...editForm, owner_email: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">WhatsApp / Teléfono:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">WhatsApp / Teléfono:</label>
                   <input
                     type="text"
                     required
                     value={editForm.owner_phone}
                     onChange={(e) => setEditForm({ ...editForm, owner_phone: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
@@ -1586,11 +1853,11 @@ export const TenantsPage: React.FC = () => {
               {/* Document Identity and Tax ID */}
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Tipo Doc.:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Tipo Doc.:</label>
                   <select
                     value={editForm.id_doc_type}
                     onChange={(e) => setEditForm({ ...editForm, id_doc_type: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-bold"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-bold focus:outline-none focus:ring-1 focus:ring-accent"
                   >
                     <option value="V">V (Cédula)</option>
                     <option value="J">J (RIF)</option>
@@ -1600,35 +1867,35 @@ export const TenantsPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Cédula o Doc.:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Cédula o Doc.:</label>
                   <input
                     type="text"
                     value={editForm.id_doc_number}
                     onChange={(e) => setEditForm({ ...editForm, id_doc_number: e.target.value })}
                     placeholder="12345678"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
 
                 <div>
-                  <label className="font-semibold text-slate-700 block mb-1">ID Fiscal / RIF:</label>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">ID Fiscal / RIF:</label>
                   <input
                     type="text"
                     value={editForm.tax_id}
                     onChange={(e) => setEditForm({ ...editForm, tax_id: e.target.value })}
                     placeholder="J-12345678-0"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                   />
                 </div>
               </div>
 
               {/* Status Selector */}
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Estado de la Cuenta:</label>
+                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Estado de la Cuenta:</label>
                 <select
                   value={editForm.status}
                   onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-semibold"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-semibold focus:outline-none focus:ring-1 focus:ring-accent"
                 >
                   <option value="active">Activo (Suscrito y habilitado)</option>
                   <option value="trial">Prueba (Trial 30 Días)</option>
@@ -1639,43 +1906,179 @@ export const TenantsPage: React.FC = () => {
 
               {/* CRM Internal Notes */}
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Notas Internas CRM:</label>
+                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Notas Internas CRM:</label>
                 <textarea
                   rows={3}
                   value={editForm.crm_notes}
                   onChange={(e) => setEditForm({ ...editForm, crm_notes: e.target.value })}
                   placeholder="Acuerdos comerciales, seguimiento, preferencias de contacto o soporte..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
                 ></textarea>
               </div>
 
               {/* Webhook URL */}
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Webhook URL (Opcional):</label>
+                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Webhook URL (Opcional):</label>
                 <input
                   type="url"
                   value={editForm.webhook_url}
                   onChange={(e) => setEditForm({ ...editForm, webhook_url: e.target.value })}
                   placeholder="https://cliente.com/api/xion-webhook"
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 font-mono"
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
                 />
               </div>
 
-              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+              {/* Billetera y Canal de Entrega */}
+              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100 dark:border-zinc-800">
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Saldo en Billetera ($ USD):</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={editForm.wallet_balance}
+                    onChange={(e) => setEditForm({ ...editForm, wallet_balance: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Canal de Nota de Entrega:</label>
+                  <select
+                    value={editForm.delivery_channel}
+                    onChange={(e) => setEditForm({ ...editForm, delivery_channel: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-1 focus:ring-accent"
+                  >
+                    <option value="email">📧 Correo Electrónico</option>
+                    <option value="whatsapp">💬 WhatsApp</option>
+                    <option value="telegram">✈️ Telegram</option>
+                    <option value="all">🌐 Todos los canales</option>
+                  </select>
+                </div>
+              </div>
+
+              {(editForm.delivery_channel === 'telegram' || editForm.delivery_channel === 'all') && (
+                <div>
+                  <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Chat ID de Telegram:</label>
+                  <input
+                    type="text"
+                    value={editForm.telegram_chat_id}
+                    onChange={(e) => setEditForm({ ...editForm, telegram_chat_id: e.target.value })}
+                    placeholder="ej: 987654321 o @usuario"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setShowEditModal(false)}
-                  className="px-3 py-2 text-xs text-slate-600 hover:text-slate-900 cursor-pointer"
+                  className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={savingEdit || !editForm.commercial_name || !editForm.owner_email || !editForm.owner_phone}
-                  className="px-4 py-2 bg-[#18181b] hover:bg-slate-800 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
+                  className="px-4 py-2 bg-accent hover:opacity-90 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
                 >
                   <Save className="w-3.5 h-3.5" />
                   <span>{savingEdit ? 'Guardando...' : 'Guardar Cambios'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Recharge Wallet Balance Modal */}
+      {showRechargeModal && rechargeTenant && (
+        <div className="fixed inset-0 bg-black/50 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-[#121215] border border-slate-200 dark:border-zinc-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-xl text-slate-900 dark:text-white transition-colors">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-zinc-800 pb-3">
+              <div className="flex items-center space-x-2">
+                <Wallet className="w-5 h-5 text-emerald-500" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">Abonar Saldo a Billetera</h3>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Cliente: <strong>{rechargeTenant.commercial_name}</strong>
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRechargeModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-500 dark:text-zinc-400 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleRechargeBalance} className="space-y-3.5 text-xs">
+              <div className="bg-slate-50 dark:bg-zinc-900 p-3 rounded-xl border border-slate-200 dark:border-zinc-800 flex justify-between items-center">
+                <span className="text-slate-600 dark:text-zinc-400">Saldo actual disponible:</span>
+                <span className="font-mono font-bold text-sm text-emerald-600 dark:text-emerald-400">
+                  ${(rechargeTenant.wallet_balance ?? 0).toFixed(2)} USD
+                </span>
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Monto a Acreditar ($ USD):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  required
+                  value={rechargeAmount}
+                  onChange={(e) => setRechargeAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-sm font-bold text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+
+              <div>
+                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Motivo / Concepto del Abono:</label>
+                <input
+                  type="text"
+                  required
+                  value={rechargeReason}
+                  onChange={(e) => setRechargeReason(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-accent"
+                />
+              </div>
+
+              {/* Auto renew toggle */}
+              <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-emerald-900 dark:text-emerald-300 block text-xs">
+                    Renovación Automática Inmediata
+                  </span>
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                    Si la cuenta está vencida o en prórroga y el saldo cubre el plan, se debita y reactiva al instante.
+                  </span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={rechargeAutoRenew}
+                  onChange={(e) => setRechargeAutoRenew(e.target.checked)}
+                  className="rounded border-emerald-300 dark:border-emerald-700 text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setShowRechargeModal(false)}
+                  className="px-3 py-2 text-xs text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={recharging || rechargeAmount <= 0}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl disabled:opacity-50 cursor-pointer flex items-center space-x-1.5 shadow-xs"
+                >
+                  <Wallet className="w-3.5 h-3.5" />
+                  <span>{recharging ? 'Acreditando...' : 'Acreditar Saldo'}</span>
                 </button>
               </div>
             </form>

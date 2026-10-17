@@ -658,3 +658,316 @@ def test_database_url_supabase_normalization():
     assert s.DATABASE_URL.startswith("postgresql+asyncpg://")
     assert "ssl=require" in s.DATABASE_URL
     assert "sslmode=require" not in s.DATABASE_URL
+
+
+@pytest.mark.asyncio
+async def test_plans_catalog_endpoint(client: AsyncClient, test_db: AsyncSession):
+    """Verify public plans catalog endpoint returns plans and payment methods."""
+    plan = Plan(
+        code="test-catalog-plan",
+        name="Plan Catálogo Test",
+        price_usd=40.00,
+        quarterly_discount_pct=5.0,
+        annual_discount_pct=10.0,
+        max_branches=1,
+        max_pos_registers=2,
+        features={"test": True},
+        is_active=True,
+    )
+    test_db.add(plan)
+    await test_db.commit()
+
+    res = await client.get("/api/v1/plans/catalog")
+    assert res.status_code == 200
+    data = res.json()
+    assert "plans" in data
+    assert "payment_methods" in data
+    assert "exchange_rate_usd_ves" in data
+    assert any(p["code"] == "test-catalog-plan" for p in data["plans"])
+
+
+@pytest.mark.asyncio
+async def test_tenant_license_status_endpoint(client: AsyncClient, test_db: AsyncSession):
+    """Verify Xion-Manager can query its license and authorization status."""
+    t_id = uuid.uuid4()
+    tenant = Tenant(
+        id=t_id,
+        commercial_name="Cliente Consulta Status",
+        tax_id="J-99988877-6",
+        owner_email="status@test.com",
+        owner_phone="+584149998877",
+        status="trial",
+    )
+    test_db.add(tenant)
+    await test_db.commit()
+
+    res = await client.get(f"/api/v1/tenants/{t_id}/license-status")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["tenant_id"] == str(t_id)
+    assert data["status"] == "trial"
+
+
+@pytest.mark.asyncio
+async def test_tenant_balance_recharge_and_auto_renew(client: AsyncClient, test_db: AsyncSession):
+    """Verify tenant wallet balance recharge and automatic renewal deduction."""
+    admin = AdminUser(
+        id=uuid.uuid4(),
+        email="super@xion.com",
+        google_sub="google_superadmin_123",
+        full_name="Super Admin",
+        role="superadmin",
+        is_active=True,
+    )
+    test_db.add(admin)
+
+    plan = Plan(
+        code="standard_29",
+        name="Plan Estándar",
+        price_usd=29.00,
+        max_branches=1,
+        max_pos_registers=2,
+        features={"pos": True},
+        is_active=True,
+    )
+    test_db.add(plan)
+    await test_db.flush()
+
+    now = datetime.now(timezone.utc)
+    past_due = now - timedelta(days=2)
+    tenant = Tenant(
+        commercial_name="Inversiones AutoRenueva",
+        tax_id="J-11223344-5",
+        owner_email="inversiones@test.com",
+        owner_phone="+584141122334",
+        delivery_channel="all",
+        telegram_chat_id="12345678",
+        status="suspended",
+        wallet_balance=0.00,
+    )
+    test_db.add(tenant)
+    await test_db.flush()
+
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        billing_cycle="monthly",
+        status="suspended",
+        current_period_start=past_due - timedelta(days=30),
+        current_period_end=past_due,
+    )
+    test_db.add(sub)
+    await test_db.commit()
+
+    token = create_access_token({"sub": admin.email, "role": admin.role})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Recharge 50.00 USD with auto_renew=True
+    recharge_res = await client.post(
+        f"/api/v1/tenants/{tenant.id}/balance",
+        json={"amount": 50.00, "auto_renew": True, "reason": "Recarga bancaria directa"},
+        headers=headers,
+    )
+    assert recharge_res.status_code == 200
+    r_data = recharge_res.json()
+    assert r_data["auto_renewed"] is True
+    # 50 - 29 = 21.00 USD remaining
+    assert r_data["current_balance"] == 21.00
+
+    # Tenant detail check
+    detail_res = await client.get(f"/api/v1/tenants/{tenant.id}", headers=headers)
+    assert detail_res.status_code == 200
+    t_data = detail_res.json()
+    assert t_data["status"] == "active"
+    assert t_data["wallet_balance"] == 21.00
+    assert t_data["countdown_days"] >= 29
+
+
+@pytest.mark.asyncio
+async def test_payment_report_establishes_grace_period_and_enriches_inbox(client: AsyncClient, test_db: AsyncSession):
+    """Verify that reporting a payment grants automatic 48h grace period and enriches reconciliation details."""
+    admin = AdminUser(
+        id=uuid.uuid4(),
+        email="auditor@xion.com",
+        google_sub="google_auditor_456",
+        full_name="Auditor Conciliador",
+        role="operator",
+        is_active=True,
+    )
+    test_db.add(admin)
+
+    plan = Plan(
+        code="premium_59",
+        name="Plan Premium Pro",
+        price_usd=59.00,
+        max_branches=3,
+        max_pos_registers=6,
+        features={"all": True},
+        is_active=True,
+    )
+    test_db.add(plan)
+    await test_db.flush()
+
+    tenant = Tenant(
+        commercial_name="Bodegón La Castellana",
+        contact_name="Carlos Mendez",
+        tax_id="J-55443322-1",
+        owner_email="carlos@bodegon.com",
+        owner_phone="+584125554433",
+        delivery_channel="whatsapp",
+        status="suspended",
+        wallet_balance=10.00,
+    )
+    test_db.add(tenant)
+    await test_db.flush()
+
+    now = datetime.now(timezone.utc)
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        billing_cycle="monthly",
+        status="suspended",
+        current_period_start=now - timedelta(days=32),
+        current_period_end=now - timedelta(days=2),
+    )
+    test_db.add(sub)
+    await test_db.commit()
+
+    # Report payment
+    report_res = await client.post(
+        "/api/v1/payments/report",
+        json={
+            "tenant_id": str(tenant.id),
+            "origin_bank": "Banesco",
+            "destination_bank": "Banco de Venezuela",
+            "payment_method_type": "pago_movil",
+            "reference_number": "PM-998877",
+            "amount": 59.00,
+            "currency": "USD",
+            "proof_attachment_url": "https://storage.xionpay.io/comprobante-pm998877.jpg",
+        },
+    )
+    assert report_res.status_code == 201
+    rep_data = report_res.json()
+    assert rep_data["tolerance_granted"] is True
+    assert rep_data["tolerance_expires_at"] is not None
+
+    token = create_access_token({"sub": admin.email, "role": admin.role})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Inspect reconciliation inbox
+    inbox_res = await client.get("/api/v1/payments/inbox", headers=headers)
+    assert inbox_res.status_code == 200
+    inbox = inbox_res.json()
+    item = next((p for p in inbox if p["reference_number"] == "PM-998877"), None)
+    assert item is not None
+    assert item["plan_name"] == "Plan Premium Pro"
+    assert item["plan_price"] == 59.00
+    assert item["tenant_phone"] == "+584125554433"
+    assert item["tenant_email"] == "carlos@bodegon.com"
+    assert item["tenant_contact_name"] == "Carlos Mendez"
+    assert item["origin_bank"] == "Banesco"
+    assert item["destination_bank"] == "Banco de Venezuela"
+    assert item["payment_method_type"] == "pago_movil"
+    assert item["tenant_wallet_balance"] == 10.00
+    assert item["exchange_rate"] == 36.50
+    assert item["amount_usd"] == 59.00
+    assert item["amount_ves"] == round(59.00 * 36.50, 2)
+
+
+@pytest.mark.asyncio
+async def test_multicurrency_payment_and_wallet_credit_on_approval(client: AsyncClient, test_db: AsyncSession):
+    """Verify reporting in VES (Bs) converts via exchange rate and approving credits tenant wallet balance."""
+    now = datetime.now(timezone.utc)
+    admin = AdminUser(
+        id=uuid.uuid4(),
+        email="operator_multi@xion.com",
+        google_sub="google_multi_123",
+        full_name="Operador Multimoneda",
+        role="operator",
+        is_active=True,
+    )
+    test_db.add(admin)
+
+    plan = Plan(
+        code="plan_multi",
+        name="Plan Multimoneda",
+        price_usd=40.00,
+        max_branches=2,
+        max_pos_registers=2,
+        is_active=True,
+    )
+    test_db.add(plan)
+    await test_db.flush()
+
+    tenant = Tenant(
+        commercial_name="Inversiones El Avila C.A.",
+        tax_id="J-99887766-5",
+        owner_email="avila@tienda.com",
+        owner_phone="+584149988776",
+        status="active",
+        wallet_balance=15.00,
+    )
+    test_db.add(tenant)
+    await test_db.flush()
+
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        billing_cycle="monthly",
+        status="active",
+        current_period_start=now - timedelta(days=10),
+        current_period_end=now + timedelta(days=20),
+    )
+    test_db.add(sub)
+    await test_db.commit()
+
+    # 1. Report payment in VES (Bs. 2,000 with tasa 50.0 Bs/USD = $40.00 USD)
+    report_res = await client.post(
+        "/api/v1/payments/report",
+        json={
+            "tenant_id": str(tenant.id),
+            "origin_bank": "Banco de Venezuela",
+            "destination_bank": "Banesco",
+            "payment_method_type": "pago_movil",
+            "reference_number": "PM-VES-001122",
+            "amount": 2000.00,
+            "currency": "VES",
+            "exchange_rate": 50.00,
+            "proof_attachment_url": "https://storage.xionpay.io/proof-ves.jpg",
+        },
+    )
+    assert report_res.status_code == 201
+    rep_data = report_res.json()
+    payment_id = rep_data["payment_id"]
+
+    token = create_access_token({"sub": admin.email, "role": admin.role, "id": str(admin.id)})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. Check inbox reflects dual currency and tasa
+    inbox_res = await client.get("/api/v1/payments/inbox", headers=headers)
+    assert inbox_res.status_code == 200
+    inbox_items = inbox_res.json()
+    p_item = next((p for p in inbox_items if p["reference_number"] == "PM-VES-001122"), None)
+    assert p_item is not None
+    assert p_item["currency"] == "VES"
+    assert p_item["amount"] == 2000.00
+    assert p_item["exchange_rate"] == 50.00
+    assert p_item["amount_usd"] == 40.00
+    assert p_item["amount_ves"] == 2000.00
+
+    # 3. Approve payment: wallet balance must be credited by approved amount ($40 USD)
+    # Initial was 15.00 -> 15.00 + 40.00 = 55.00
+    approve_res = await client.post(f"/api/v1/payments/{payment_id}/approve", headers=headers)
+    assert approve_res.status_code == 200
+    app_data = approve_res.json()
+    assert app_data["status"] == "success"
+    assert app_data["subscription"]["wallet_balance"] == 55.00
+
+    # 4. Verify tenant record updated
+    t_res = await client.get(f"/api/v1/tenants/{tenant.id}", headers=headers)
+    assert t_res.status_code == 200
+    t_data = t_res.json()
+    assert t_data["wallet_balance"] == 55.00
+
+

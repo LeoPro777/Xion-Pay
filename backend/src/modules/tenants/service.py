@@ -1,9 +1,13 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger("xionpay.tenants")
+
 
 from src.core.crypto_licensing import generate_license_token, compute_token_hash
 from src.modules.tenants.models import Tenant, Subscription, LicenseToken, FiscalProfile, ComprobantePago
@@ -23,9 +27,12 @@ from src.modules.tenants.schemas import (
     ComprobanteResponse,
     XionManagerLeadCreate,
     XionManagerLeadResponse,
+    TenantBalanceRecharge,
+    TenantBalanceResponse,
 )
 from src.modules.plans.schemas import PlanResponse
 from src.modules.webhooks.dispatcher import WebhookDispatcher
+from src.modules.notifications.delivery_service import DeliveryNoteService
 from src.utils.exceptions import ResourceNotFoundError, XionPayBaseException
 
 
@@ -40,6 +47,47 @@ class TenantService:
             delta = end_date - now
             return max(0, delta.days)
         return None
+
+    @staticmethod
+    def _calculate_countdown(sub: Optional[Subscription]) -> dict:
+        if not sub or not sub.current_period_end:
+            return {
+                "next_billing_date": None,
+                "countdown_seconds": None,
+                "countdown_days": None,
+                "countdown_hours": None,
+                "is_due": False,
+                "in_grace_period": False,
+            }
+
+        now = datetime.now(timezone.utc)
+        period_end = sub.current_period_end
+        if period_end.tzinfo is None:
+            period_end = period_end.replace(tzinfo=timezone.utc)
+
+        diff_seconds = int((period_end - now).total_seconds())
+        in_grace = False
+        if sub.status == "grace_period":
+            in_grace = True
+        elif sub.tolerance_expires_at:
+            tol_exp = sub.tolerance_expires_at
+            if tol_exp.tzinfo is None:
+                tol_exp = tol_exp.replace(tzinfo=timezone.utc)
+            if tol_exp > now:
+                in_grace = True
+
+        is_due = diff_seconds <= 0
+        days = max(0, diff_seconds // 86400) if diff_seconds > 0 else 0
+        hours = max(0, (diff_seconds % 86400) // 3600) if diff_seconds > 0 else 0
+
+        return {
+            "next_billing_date": period_end,
+            "countdown_seconds": max(0, diff_seconds),
+            "countdown_days": days,
+            "countdown_hours": hours,
+            "is_due": is_due,
+            "in_grace_period": in_grace,
+        }
 
     @staticmethod
     async def list_tenants(
@@ -77,6 +125,7 @@ class TenantService:
                 active_sub = t.subscriptions[0]
 
             activo_seniat = t.fiscal_profile.activo_seniat if t.fiscal_profile else False
+            countdown_data = TenantService._calculate_countdown(active_sub)
 
             items.append(
                 TenantListItemResponse(
@@ -93,10 +142,15 @@ class TenantService:
                     courtesy_days_granted=t.courtesy_days_granted,
                     crm_lead_source=t.crm_lead_source or "manual",
                     activo_seniat=activo_seniat,
+                    wallet_balance=float(t.wallet_balance or 0.0),
+                    delivery_channel=t.delivery_channel or "email",
+                    telegram_chat_id=t.telegram_chat_id,
                     created_at=t.created_at,
                     active_plan_name=active_sub.plan.name if active_sub and active_sub.plan else None,
+                    active_plan_price=float(active_sub.plan.price_usd) if active_sub and active_sub.plan else None,
                     subscription_status=active_sub.status if active_sub else None,
                     subscription_expires_at=active_sub.current_period_end if active_sub else None,
+                    **countdown_data,
                 )
             )
         return items
@@ -180,6 +234,8 @@ class TenantService:
                     )
                 )
 
+        countdown_data = TenantService._calculate_countdown(active_sub)
+
         return TenantDetailResponse(
             id=tenant.id,
             commercial_name=tenant.commercial_name,
@@ -192,6 +248,9 @@ class TenantService:
             webhook_url=tenant.webhook_url,
             webhook_secret=tenant.webhook_secret,
             status=tenant.status,
+            wallet_balance=float(tenant.wallet_balance or 0.0),
+            delivery_channel=tenant.delivery_channel or "email",
+            telegram_chat_id=tenant.telegram_chat_id,
             trial_ends_at=tenant.trial_ends_at,
             trial_days_remaining=TenantService._calculate_trial_days_remaining(tenant),
             courtesy_days_granted=tenant.courtesy_days_granted,
@@ -199,6 +258,7 @@ class TenantService:
             crm_notes=tenant.crm_notes,
             created_at=tenant.created_at,
             updated_at=tenant.updated_at,
+            **countdown_data,
             active_subscription=sub_resp,
             latest_license=lic_resp,
             fiscal_profile=fiscal_resp,
@@ -258,6 +318,9 @@ class TenantService:
             webhook_url=req.webhook_url,
             webhook_secret=req.webhook_secret or str(uuid.uuid4()),
             status=req.status,
+            wallet_balance=req.wallet_balance or 0.00,
+            delivery_channel=req.delivery_channel or "email",
+            telegram_chat_id=req.telegram_chat_id,
             trial_ends_at=trial_end if req.trial_days > 0 else None,
             courtesy_days_granted=0,
             crm_lead_source="manual",
@@ -760,6 +823,12 @@ class TenantService:
             tenant.webhook_secret = req.webhook_secret.strip() or None
         if req.crm_notes is not None:
             tenant.crm_notes = req.crm_notes.strip() or None
+        if req.wallet_balance is not None:
+            tenant.wallet_balance = req.wallet_balance
+        if req.delivery_channel is not None:
+            tenant.delivery_channel = req.delivery_channel.strip().lower()
+        if req.telegram_chat_id is not None:
+            tenant.telegram_chat_id = req.telegram_chat_id.strip() or None
 
         status_changed = False
         prev_status = tenant.status
@@ -871,3 +940,342 @@ class TenantService:
             )
 
         return await TenantService.get_tenant_detail(db, tenant_id)
+
+    @staticmethod
+    async def get_tenant_license_status(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
+        """Consulta directa del estado de autorización y licencia activa por parte de Xion-Manager."""
+        query = select(Tenant).where(Tenant.id == tenant_id).options(
+            selectinload(Tenant.subscriptions).selectinload(Subscription.plan),
+            selectinload(Tenant.license_tokens),
+        )
+        res = await db.execute(query)
+        tenant = res.scalar_one_or_none()
+        if not tenant:
+            raise ResourceNotFoundError("Comercio cliente no encontrado.")
+
+        now = datetime.now(timezone.utc)
+        latest_license = sorted(tenant.license_tokens, key=lambda l: l.issued_at, reverse=True)[0] if tenant.license_tokens else None
+
+        active_sub = next((s for s in tenant.subscriptions if s.status == "active"), None)
+
+        license_jwt = None
+        if latest_license and isinstance(latest_license.payload_snapshot, dict):
+            license_jwt = latest_license.payload_snapshot.get("license_jwt")
+
+        return {
+            "tenant_id": str(tenant.id),
+            "commercial_name": tenant.commercial_name,
+            "status": tenant.status,
+            "trial_ends_at": tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
+            "subscription": {
+                "status": active_sub.status,
+                "plan_code": active_sub.plan.code,
+                "plan_name": active_sub.plan.name,
+                "current_period_end": active_sub.current_period_end.isoformat(),
+            } if active_sub else None,
+            "license_token": license_jwt,
+            "checked_at": now.isoformat(),
+        }
+
+    @staticmethod
+    async def recharge_balance(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+        req: TenantBalanceRecharge,
+    ) -> TenantBalanceResponse:
+        """Recarga saldo en la billetera del tenant e intenta renovar si la suscripción está vencida."""
+        query = (
+            select(Tenant)
+            .where(Tenant.id == tenant_id)
+            .options(selectinload(Tenant.subscriptions).selectinload(Subscription.plan))
+        )
+        res = await db.execute(query)
+        tenant = res.scalar_one_or_none()
+        if not tenant:
+            raise ResourceNotFoundError("Tenant", str(tenant_id))
+
+        current_balance = float(tenant.wallet_balance or 0.0)
+        new_balance = round(current_balance + req.amount, 2)
+        tenant.wallet_balance = new_balance
+        tenant.updated_at = datetime.now(timezone.utc)
+
+        active_sub = next(
+            (s for s in tenant.subscriptions if s.status in ("active", "grace_period", "suspended")),
+            None,
+        )
+        plan = active_sub.plan if active_sub else None
+        plan_price = float(plan.price_usd) if plan else 0.0
+        plan_name = plan.name if plan else ""
+
+        is_due = False
+        if active_sub:
+            now = datetime.now(timezone.utc)
+            sub_end = active_sub.current_period_end
+            if sub_end.tzinfo is None:
+                sub_end = sub_end.replace(tzinfo=timezone.utc)
+            is_due = sub_end <= now or active_sub.status in ("grace_period", "suspended")
+
+        await db.commit()
+
+        renewed = False
+        new_period_end = None
+        message = f"Saldo recargado exitosamente (+${req.amount:.2f} USD). Saldo actual: ${new_balance:.2f} USD."
+
+        if req.auto_renew and is_due and plan and new_balance >= plan_price:
+            detail = await TenantService.renew_from_balance(db, tenant_id)
+            new_balance = detail.wallet_balance
+            renewed = True
+            if detail.active_subscription:
+                new_period_end = detail.active_subscription.current_period_end
+            message = f"Saldo acreditado y suscripción '{plan_name}' renovada automáticamente por ${plan_price:.2f} USD. Saldo restante: ${new_balance:.2f} USD."
+
+        return TenantBalanceResponse(
+            tenant_id=tenant_id,
+            previous_balance=current_balance,
+            credited_amount=req.amount,
+            current_balance=new_balance,
+            auto_renewed=renewed,
+            new_period_end=new_period_end,
+            message=message,
+        )
+
+    @staticmethod
+    async def renew_from_balance(
+        db: AsyncSession,
+        tenant_id: uuid.UUID,
+    ) -> TenantDetailResponse:
+        """
+        Renueva la suscripción debitando el costo del plan directamente del saldo del tenant.
+        Emite token criptográfico y despacha nota de entrega multicanal.
+        """
+        query = (
+            select(Tenant)
+            .where(Tenant.id == tenant_id)
+            .options(
+                selectinload(Tenant.subscriptions).selectinload(Subscription.plan),
+                selectinload(Tenant.license_tokens),
+                selectinload(Tenant.fiscal_profile),
+            )
+        )
+        res = await db.execute(query)
+        tenant = res.scalar_one_or_none()
+        if not tenant:
+            raise ResourceNotFoundError("Tenant", str(tenant_id))
+
+        active_sub = next(
+            (s for s in tenant.subscriptions if s.status in ("active", "grace_period", "suspended")),
+            None,
+        )
+        if not active_sub or not active_sub.plan:
+            raise XionPayBaseException(
+                message="El cliente no cuenta con una suscripción asociada para renovar.",
+                error_code="NO_ASSOCIATED_SUBSCRIPTION",
+                status_code=400,
+            )
+
+        plan = active_sub.plan
+        plan_price = float(plan.price_usd)
+        current_balance = float(tenant.wallet_balance or 0.0)
+
+        if current_balance < plan_price:
+            raise XionPayBaseException(
+                message=f"Saldo insuficiente en billetera (${current_balance:.2f} USD). Se requieren ${plan_price:.2f} USD para el plan '{plan.name}'.",
+                error_code="INSUFFICIENT_WALLET_BALANCE",
+                status_code=400,
+            )
+
+        # Debit balance
+        new_balance = round(current_balance - plan_price, 2)
+        tenant.wallet_balance = new_balance
+
+        now = datetime.now(timezone.utc)
+        sub_end = active_sub.current_period_end
+        if sub_end.tzinfo is None:
+            sub_end = sub_end.replace(tzinfo=timezone.utc)
+
+        base_date = max(sub_end, now)
+        period_days = 365 if active_sub.billing_cycle == "annual" else 30
+        new_expiration = base_date + timedelta(days=period_days)
+
+        active_sub.current_period_start = now
+        active_sub.current_period_end = new_expiration
+        active_sub.status = "active"
+        active_sub.tolerance_expires_at = None
+        tenant.status = "active"
+
+        # Generate cryptographic RS256 token
+        token_str = generate_license_token(
+            tenant_id=str(tenant.id),
+            plan_code=plan.code,
+            max_branches=plan.max_branches,
+            max_pos_registers=plan.max_pos_registers,
+            enabled_features=plan.features,
+            issued_at=now,
+            expires_at=new_expiration,
+        )
+        lic_record = LicenseToken(
+            tenant_id=tenant.id,
+            token_signature=compute_token_hash(token_str),
+            payload_snapshot={
+                "plan_code": plan.code,
+                "max_branches": plan.max_branches,
+                "max_pos_registers": plan.max_pos_registers,
+                "enabled_features": plan.features,
+                "license_jwt": token_str,
+                "renewed_via": "wallet_balance",
+                "amount_debited": plan_price,
+            },
+            issued_at=now,
+            expires_at=new_expiration,
+        )
+        db.add(lic_record)
+
+        # Issue Comprobante / Recibo de Pago
+        recibo_num = f"REC-{now.year}-{uuid.uuid4().hex[:6].upper()}"
+        recibo = ComprobantePago(
+            tenant_id=tenant.id,
+            subscription_id=active_sub.id,
+            tipo_documento="RECIBO_COBRO",
+            numero_comprobante=recibo_num,
+            numero_control=None,
+            moneda_base="USD",
+            monto_usd=plan_price,
+            tasa_bcv=36.50,
+            base_imponible_ves=round(plan_price * 36.50, 2),
+            porcentaje_iva=0.00,
+            monto_iva_ves=0.00,
+            aplica_igtf=False,
+            monto_igtf_ves=0.00,
+            total_ves=round(plan_price * 36.50, 2),
+            datos_fiscales_snapshot={
+                "concepto": f"Renovación Plan {plan.name} vía Débito de Saldo",
+                "saldo_restante": new_balance,
+            },
+            estado="PAGADO",
+        )
+        db.add(recibo)
+        await db.commit()
+
+        # Multichannel Delivery Note Dispatch
+        await DeliveryNoteService.dispatch_renewal_delivery_note(
+            tenant_name=tenant.commercial_name,
+            owner_email=tenant.owner_email,
+            owner_phone=tenant.owner_phone,
+            delivery_channel=tenant.delivery_channel or "email",
+            telegram_chat_id=tenant.telegram_chat_id,
+            plan_name=plan.name,
+            amount_paid=plan_price,
+            new_period_end=new_expiration,
+            deducted_from_balance=True,
+        )
+
+        # Webhook Notification
+        if tenant.webhook_url:
+            await WebhookDispatcher.dispatch_event(
+                db=db,
+                tenant_id=tenant.id,
+                webhook_url=tenant.webhook_url,
+                webhook_secret=tenant.webhook_secret,
+                event_type="subscription.renewed",
+                data={
+                    "license_token": token_str,
+                    "expires_at": new_expiration.isoformat(),
+                    "plan_code": plan.code,
+                    "plan_name": plan.name,
+                    "wallet_balance": new_balance,
+                    "limits": {
+                        "max_branches": plan.max_branches,
+                        "max_pos_registers": plan.max_pos_registers,
+                        "features": plan.features,
+                    },
+                },
+            )
+
+        return await TenantService.get_tenant_detail(db, tenant.id)
+
+    @staticmethod
+    async def process_due_subscriptions(db: AsyncSession) -> dict:
+        """
+        Ciclo de facturación automático:
+        - Si el plan vence y hay saldo suficiente: se renueva automáticamente.
+        - Si el plan vence sin saldo y no está en prórroga: pasa a suspensión.
+        - Si el plan vence pero cuenta con prórroga activa: se mantiene en prórroga.
+        """
+        now = datetime.now(timezone.utc)
+        query = (
+            select(Subscription)
+            .where(Subscription.status.in_(["active", "grace_period"]))
+            .options(
+                selectinload(Subscription.tenant),
+                selectinload(Subscription.plan),
+            )
+        )
+        res = await db.execute(query)
+        subscriptions = res.scalars().all()
+
+        renewed_count = 0
+        suspended_count = 0
+        grace_period_count = 0
+
+        for sub in subscriptions:
+            period_end = sub.current_period_end
+            if period_end.tzinfo is None:
+                period_end = period_end.replace(tzinfo=timezone.utc)
+
+            if period_end > now:
+                continue
+
+            tenant = sub.tenant
+            plan = sub.plan
+            if not tenant or not plan:
+                continue
+
+            wallet_balance = float(tenant.wallet_balance or 0.0)
+            plan_price = float(plan.price_usd)
+
+            if wallet_balance >= plan_price:
+                # Automatic renewal from balance
+                try:
+                    await TenantService.renew_from_balance(db, tenant.id)
+                    renewed_count += 1
+                except Exception:
+                    logger.exception(f"Error auto-renewing tenant {tenant.id} from balance")
+            else:
+                # Check if in contingency grace period / prórroga
+                in_grace = False
+                if sub.tolerance_expires_at:
+                    tol_exp = sub.tolerance_expires_at
+                    if tol_exp.tzinfo is None:
+                        tol_exp = tol_exp.replace(tzinfo=timezone.utc)
+                    if tol_exp > now:
+                        in_grace = True
+
+                if in_grace:
+                    sub.status = "grace_period"
+                    grace_period_count += 1
+                else:
+                    sub.status = "suspended"
+                    tenant.status = "suspended"
+                    suspended_count += 1
+                    if tenant.webhook_url:
+                        await WebhookDispatcher.dispatch_event(
+                            db=db,
+                            tenant_id=tenant.id,
+                            webhook_url=tenant.webhook_url,
+                            webhook_secret=tenant.webhook_secret,
+                            event_type="account.suspended",
+                            data={
+                                "reason": "Vencimiento de suscripción por saldo insuficiente",
+                                "plan_code": plan.code,
+                                "wallet_balance": wallet_balance,
+                            },
+                        )
+
+        await db.commit()
+        return {
+            "processed_at": now.isoformat(),
+            "renewed_count": renewed_count,
+            "suspended_count": suspended_count,
+            "grace_period_count": grace_period_count,
+        }
+

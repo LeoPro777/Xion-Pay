@@ -18,11 +18,14 @@ from src.modules.tenants.schemas import (
     ComprobanteResponse,
     XionManagerLeadCreate,
     XionManagerLeadResponse,
+    TenantBalanceRecharge,
+    TenantBalanceResponse,
 )
 from src.modules.tenants.service import TenantService
 
 router = APIRouter(prefix="/tenants", tags=["Clientes & Facturación SENIAT"])
 clients_router = APIRouter(prefix="/clients", tags=["Clientes & Facturación SENIAT"])
+
 
 
 # ==============================================================================
@@ -171,3 +174,65 @@ async def list_comprobantes(
 ):
     """Lista historial de recibos de cobro y comprobantes del cliente."""
     return await TenantService.list_comprobantes(db, tenant_id)
+
+
+@router.get("/{tenant_id}/license-status")
+@clients_router.get("/{tenant_id}/license-status")
+async def get_tenant_license_status(
+    tenant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Consulta directa de autorización y token de licencia criptográfico para Xion-Manager.
+    Permite a la instancia cliente validar su estatus y plan activo en cualquier momento.
+    """
+    return await TenantService.get_tenant_license_status(db, tenant_id)
+
+
+# ==============================================================================
+# BILLETERA / SALDO Y RENOVACIÓN AUTOMÁTICA
+# ==============================================================================
+
+@router.post("/{tenant_id}/balance", response_model=TenantBalanceResponse)
+@clients_router.post("/{tenant_id}/balance", response_model=TenantBalanceResponse)
+async def recharge_tenant_balance(
+    tenant_id: uuid.UUID,
+    payload: TenantBalanceRecharge,
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(require_role("superadmin", "operator")),
+):
+    """
+    Acredita saldo a la billetera del cliente.
+    Si auto_renew_if_due es True y el plan está por vencer/vencido, procesa la renovación automáticamente.
+    """
+    return await TenantService.recharge_balance(db, tenant_id, payload)
+
+
+@router.post("/{tenant_id}/renew-from-balance", response_model=TenantDetailResponse)
+@clients_router.post("/{tenant_id}/renew-from-balance", response_model=TenantDetailResponse)
+async def renew_from_balance(
+    tenant_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(require_role("superadmin", "operator")),
+):
+    """
+    Debita el costo del plan del saldo del tenant y renueva inmediatamente su suscripción y licencia RS256,
+    despachando la nota de entrega por el canal seleccionado por el comercio (email, whatsapp o telegram).
+    """
+    return await TenantService.renew_from_balance(db, tenant_id)
+
+
+@router.post("/billing/process-cycle")
+@clients_router.post("/billing/process-cycle")
+async def process_billing_cycle(
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(require_role("superadmin", "operator")),
+):
+    """
+    Ejecuta el ciclo de cobro y conciliación periódica de planes:
+    - Renueva automáticamente los comercios con saldo suficiente.
+    - Mantiene en prórroga los que reportaron pago o están dentro del período de tolerancia.
+    - Suspende aquellos vencidos sin saldo ni prórroga activa.
+    """
+    return await TenantService.process_due_subscriptions(db)
+

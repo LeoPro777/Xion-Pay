@@ -103,23 +103,28 @@ def generate_subscription_invoice_pdf(payment_data: Dict[str, Any]) -> bytes:
     story.append(t_info)
     story.append(Spacer(1, 20))
 
-    # Table breakdown
+    # Multi-currency breakdown
+    amt_usd = float(payment_data.get("amount_usd", payment_data.get("amount", 0.0)))
+    amt_ves = float(payment_data.get("amount_ves", 0.0))
+    rate = float(payment_data.get("exchange_rate", 1.0))
+    rate_str = f"{rate:,.2f} Bs/$" if rate > 0 else "1.00"
+
     table_data = [
         [
             Paragraph("<b>Concepto</b>", body_bold),
-            Paragraph("<b>Banco Origen</b>", body_bold),
-            Paragraph("<b>N° Referencia</b>", body_bold),
-            Paragraph("<b>Monto Conciliado</b>", body_bold),
+            Paragraph("<b>Banco / Ref</b>", body_bold),
+            Paragraph("<b>Tasa Cambio</b>", body_bold),
+            Paragraph("<b>Monto en USD / Bs</b>", body_bold),
         ],
         [
             Paragraph(f"Renovación de Licencia: {plan_name}", body_normal),
-            Paragraph(bank, body_normal),
-            Paragraph(ref_num, body_normal),
-            Paragraph(f"<b>{amount}</b>", body_bold),
+            Paragraph(f"{bank}<br/><font color='#64748b'>Ref: {ref_num}</font>", body_normal),
+            Paragraph(rate_str, body_normal),
+            Paragraph(f"<b>${amt_usd:,.2f} USD</b><br/><font color='#16a34a'>Bs. {amt_ves:,.2f}</font>", body_bold),
         ],
     ]
 
-    breakdown_table = Table(table_data, colWidths=[2.6 * inch, 1.4 * inch, 1.5 * inch, 1.5 * inch])
+    breakdown_table = Table(table_data, colWidths=[2.5 * inch, 1.8 * inch, 1.2 * inch, 1.5 * inch])
     breakdown_table.setStyle(
         TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f1f5f9")),

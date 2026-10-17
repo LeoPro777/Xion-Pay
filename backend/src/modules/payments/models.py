@@ -13,9 +13,14 @@ class PaymentReport(Base):
     tenant_id = Column(GUID(), ForeignKey("tenants.id", ondelete="RESTRICT"), nullable=False, index=True)
     subscription_id = Column(GUID(), ForeignKey("subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True)
     origin_bank = Column(String(100), nullable=False)  # Ej: 'Banesco', 'Mercantil', 'Pago Movil', 'Zelle'
+    destination_bank = Column(String(150), nullable=True)  # Cuenta/banco receptor (ej: 'Banesco Xion-Pay 0134...')
+    payment_method_type = Column(String(50), nullable=True, default="pago_movil")  # 'pago_movil', 'transferencia', 'zelle', 'efectivo'
     reference_number = Column(String(100), nullable=False)
     amount = Column(Numeric(14, 2), nullable=False)
     currency = Column(String(10), nullable=False, default="USD")  # 'USD' o 'VES'
+    exchange_rate = Column(Numeric(12, 4), nullable=False, default=1.0)  # Tasa oficial/BCV al momento del reporte
+    amount_usd = Column(Numeric(14, 2), nullable=False, default=0.0)  # Monto equivalente en USD ($)
+    amount_ves = Column(Numeric(14, 2), nullable=False, default=0.0)  # Monto equivalente en VES (Bs)
     proof_attachment_url = Column(Text, nullable=False)
     status = Column(String(50), nullable=False, default="pending")  # 'pending', 'approved', 'rejected'
     rejection_reason = Column(Text, nullable=True)

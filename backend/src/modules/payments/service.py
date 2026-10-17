@@ -20,6 +20,8 @@ from src.modules.payments.schemas import (
 )
 from src.modules.webhooks.dispatcher import WebhookDispatcher
 from src.modules.notifications.manager import notification_manager
+from src.modules.notifications.delivery_service import DeliveryNoteService
+from src.modules.settings.service import SettingsService
 from src.utils.exceptions import (
     DuplicatePaymentException,
     ResourceNotFoundError,
@@ -34,7 +36,7 @@ class PaymentService:
         """
         Receives payment report from Xion-Manager instance.
         Validates antifraud uniqueness on (origin_bank, reference_number, amount).
-        Applies 24h contingency tolerance if due today.
+        Applies automatic 48h contingency grace period (prórroga) upon reporting.
         Alerts administrators in real time.
         """
         # 1. Antifraud Pre-check
@@ -64,15 +66,15 @@ class PaymentService:
         if not tenant:
             raise ResourceNotFoundError("Tenant", str(req.tenant_id))
 
-        if tenant.status in ("frozen", "suspended"):
+        if tenant.status in ("frozen",):
             raise XionPayBaseException(
-                message="El comercio está suspendido o congelado. No es posible reportar pagos.",
+                message="El comercio está congelado administrativamente. No es posible reportar pagos.",
                 error_code="TENANT_INACTIVE",
                 status_code=403,
             )
 
         # Find active or most recent subscription
-        sub = next((s for s in tenant.subscriptions if s.status in ("active", "grace_period", "expired")), None)
+        sub = next((s for s in tenant.subscriptions if s.status in ("active", "grace_period", "expired", "suspended")), None)
         if not sub and tenant.subscriptions:
             sub = tenant.subscriptions[0]
         elif not sub:
@@ -83,25 +85,43 @@ class PaymentService:
             )
 
         now = datetime.now(timezone.utc)
-        tolerance_granted = False
-        tolerance_expires_at = None
+        # Automatic contingency grace period (prórroga de 48h al reportar pago)
+        tolerance_granted = True
+        tolerance_expires_at = now + timedelta(hours=48)
+        sub.tolerance_expires_at = tolerance_expires_at
+        sub.status = "grace_period"
+        if tenant.status == "suspended":
+            tenant.status = "active"
 
-        # Check if due today or past due for 24h operational tolerance
-        hours_diff = (sub.current_period_end - now).total_seconds() / 3600.0
-        if hours_diff <= 24:
-            tolerance_granted = True
-            tolerance_expires_at = now + timedelta(hours=24)
-            sub.tolerance_expires_at = tolerance_expires_at
-            sub.status = "grace_period"
+        # Multi-currency calculation: rate and equivalent amounts in USD and VES (Bs)
+        if req.exchange_rate and req.exchange_rate > 0:
+            rate = float(req.exchange_rate)
+        else:
+            rate = await SettingsService.get_usd_ves_rate(db)
 
-        # Create Payment record
+        raw_currency = (req.currency or "USD").strip().upper()
+        if raw_currency in ("VES", "BS", "BS.", "BOLIVARES"):
+            currency = "VES"
+            amount_ves = round(float(req.amount), 2)
+            amount_usd = round(amount_ves / rate, 2) if rate > 0 else amount_ves
+        else:
+            currency = "USD"
+            amount_usd = round(float(req.amount), 2)
+            amount_ves = round(amount_usd * rate, 2)
+
+        # Create Payment record with enriched fields
         payment = PaymentReport(
             tenant_id=tenant.id,
             subscription_id=sub.id,
             origin_bank=req.origin_bank,
+            destination_bank=req.destination_bank,
+            payment_method_type=req.payment_method_type or "pago_movil",
             reference_number=req.reference_number,
             amount=req.amount,
-            currency=req.currency,
+            currency=currency,
+            exchange_rate=rate,
+            amount_usd=amount_usd,
+            amount_ves=amount_ves,
             proof_attachment_url=req.proof_attachment_url,
             status="pending",
             metadata_info=req.metadata or {},
@@ -129,7 +149,12 @@ class PaymentService:
                 "tax_id": tenant.tax_id,
                 "amount": float(payment.amount),
                 "currency": payment.currency,
+                "exchange_rate": float(payment.exchange_rate or rate),
+                "amount_usd": float(payment.amount_usd or amount_usd),
+                "amount_ves": float(payment.amount_ves or amount_ves),
                 "origin_bank": payment.origin_bank,
+                "destination_bank": payment.destination_bank,
+                "payment_method_type": payment.payment_method_type,
                 "reference_number": payment.reference_number,
                 "reported_at": payment.reported_at.isoformat(),
             },
@@ -137,7 +162,7 @@ class PaymentService:
 
         return PaymentReportResult(
             status="success",
-            message="Pago reportado exitosamente. En revisión por administración.",
+            message="Pago reportado exitosamente. Prórroga de 48h establecida mientras administración valida.",
             payment_id=payment.id,
             tolerance_granted=tolerance_granted,
             tolerance_expires_at=tolerance_expires_at,
@@ -177,9 +202,14 @@ class PaymentService:
                     tenant_id=p.tenant_id,
                     subscription_id=p.subscription_id,
                     origin_bank=p.origin_bank,
+                    destination_bank=p.destination_bank,
+                    payment_method_type=p.payment_method_type or "pago_movil",
                     reference_number=p.reference_number,
                     amount=float(p.amount),
                     currency=p.currency,
+                    exchange_rate=float(p.exchange_rate if p.exchange_rate is not None else 1.0),
+                    amount_usd=float(p.amount_usd if p.amount_usd is not None else p.amount),
+                    amount_ves=float(p.amount_ves if p.amount_ves is not None else 0.0),
                     proof_attachment_url=p.proof_attachment_url,
                     status=p.status,
                     rejection_reason=p.rejection_reason,
@@ -189,10 +219,16 @@ class PaymentService:
                     metadata_info=p.metadata_info,
                     tenant_commercial_name=p.tenant.commercial_name if p.tenant else None,
                     tenant_tax_id=p.tenant.tax_id if p.tenant else None,
+                    tenant_phone=p.tenant.owner_phone if p.tenant else None,
+                    tenant_email=p.tenant.owner_email if p.tenant else None,
+                    tenant_contact_name=p.tenant.contact_name if p.tenant else None,
                     plan_name=p.subscription.plan.name if (p.subscription and p.subscription.plan) else None,
+                    plan_price=float(p.subscription.plan.price_usd) if (p.subscription and p.subscription.plan) else None,
+                    tenant_wallet_balance=float(p.tenant.wallet_balance or 0.0) if p.tenant else 0.0,
                 )
             )
         return responses
+
 
     @staticmethod
     async def approve_payment(
@@ -243,6 +279,15 @@ class PaymentService:
         base_date = max(sub.current_period_end, now)
         new_period_end = base_date + period_delta
 
+        # Credit wallet by approved amount in USD
+        current_balance = float(tenant.wallet_balance or 0.0)
+        approved_usd = float(payment.amount_usd) if (payment.amount_usd is not None and payment.amount_usd > 0) else (
+            round(float(payment.amount) / float(payment.exchange_rate or 1.0), 2)
+            if payment.currency in ("VES", "BS")
+            else float(payment.amount)
+        )
+        tenant.wallet_balance = round(current_balance + approved_usd, 2)
+
         # Atomic updates
         payment.status = "approved"
         payment.reviewed_by = admin_user.id
@@ -252,7 +297,7 @@ class PaymentService:
         sub.current_period_end = new_period_end
         sub.tolerance_expires_at = None
 
-        if tenant.status in ("trial", "frozen"):
+        if tenant.status in ("trial", "frozen", "suspended"):
             tenant.status = "active"
 
         # Generate RS256 License Token
@@ -276,6 +321,7 @@ class PaymentService:
                 "enabled_features": plan.features,
                 "license_jwt": token_str,
                 "approved_payment_id": str(payment.id),
+                "wallet_balance": float(tenant.wallet_balance),
             },
             issued_at=now,
             expires_at=new_period_end,
@@ -283,6 +329,20 @@ class PaymentService:
         db.add(license_record)
 
         await db.commit()
+
+        # Multichannel Delivery Note Dispatch (Email, WhatsApp, Telegram)
+        await DeliveryNoteService.dispatch_renewal_delivery_note(
+            tenant_name=tenant.commercial_name,
+            owner_email=tenant.owner_email,
+            owner_phone=tenant.owner_phone,
+            delivery_channel=tenant.delivery_channel or "email",
+            telegram_chat_id=tenant.telegram_chat_id,
+            plan_name=plan.name,
+            amount_paid=approved_usd,
+            new_period_end=new_period_end,
+            payment_reference=payment.reference_number,
+            deducted_from_balance=False,
+        )
 
         # Dispatch outgoing webhook with HMAC SHA-256
         if tenant.webhook_url:
@@ -295,6 +355,7 @@ class PaymentService:
                 data={
                     "license_token": token_str,
                     "expires_at": new_period_end.isoformat(),
+                    "wallet_balance": float(tenant.wallet_balance),
                     "limits": {
                         "max_branches": plan.max_branches,
                         "max_pos_registers": plan.max_pos_registers,
@@ -312,10 +373,11 @@ class PaymentService:
 
         return PaymentApproveResult(
             status="success",
-            message="Pago aprobado. Licencia emitida y webhook despachado.",
+            message="Pago aprobado. Licencia emitida, saldo actualizado y nota de entrega despachada.",
             subscription={
                 "status": "active",
                 "new_period_end": new_period_end.isoformat(),
+                "wallet_balance": float(tenant.wallet_balance),
             },
             license_token=token_str,
         )
@@ -404,6 +466,9 @@ class PaymentService:
             "reference_number": payment.reference_number,
             "amount": payment.amount,
             "currency": payment.currency,
+            "exchange_rate": float(payment.exchange_rate if payment.exchange_rate is not None else 1.0),
+            "amount_usd": float(payment.amount_usd if payment.amount_usd is not None else payment.amount),
+            "amount_ves": float(payment.amount_ves if payment.amount_ves is not None else 0.0),
             "reported_at": payment.reported_at,
             "status": payment.status,
             "tenant_name": payment.tenant.commercial_name if payment.tenant else "Desconocido",
