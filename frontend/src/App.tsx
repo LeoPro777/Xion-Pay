@@ -26,16 +26,18 @@ const MainLayout: React.FC = () => {
   const [rateUpdatedTrigger, setRateUpdatedTrigger] = useState<number>(0);
 
   useEffect(() => {
-    if (user) {
+    const fetchRate = () => {
       api.get<SystemSettings>('/settings')
         .then((res) => {
-          if (res.data && res.data.usd_ves_rate) {
+          if (res.data && typeof res.data.usd_ves_rate === 'number') {
             setCurrentRate(res.data.usd_ves_rate);
           }
         })
-        .catch((err) => console.error('Error fetching initial settings:', err));
-    }
-  }, [user]);
+        .catch((err) => console.error('Error fetching settings from BDD:', err));
+    };
+
+    fetchRate();
+  }, [user, lastEventTimestamp, rateUpdatedTrigger]);
 
   if (loading) {
     return (

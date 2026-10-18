@@ -12,6 +12,7 @@ logger = logging.getLogger("xionpay.tenants")
 from src.core.crypto_licensing import generate_license_token, compute_token_hash
 from src.modules.tenants.models import Tenant, Subscription, LicenseToken, FiscalProfile, ComprobantePago
 from src.modules.plans.models import Plan
+from src.modules.settings.service import SettingsService
 from src.modules.tenants.schemas import (
     TenantCreate,
     TenantUpdate,
@@ -536,6 +537,7 @@ class TenantService:
         db.add(lic_record)
 
         # Issue initial MVP Proforma / Recibo de Cobro
+        current_rate = await SettingsService.get_usd_ves_rate(db)
         recibo_num = f"REC-{now.year}-{uuid.uuid4().hex[:6].upper()}"
         recibo = ComprobantePago(
             tenant_id=tenant.id,
@@ -545,7 +547,7 @@ class TenantService:
             numero_control=None,
             moneda_base="USD",
             monto_usd=0.00,
-            tasa_bcv=36.50,
+            tasa_bcv=current_rate,
             base_imponible_ves=0.00,
             porcentaje_iva=0.00,
             monto_iva_ves=0.00,
@@ -1131,6 +1133,7 @@ class TenantService:
         db.add(lic_record)
 
         # Issue Comprobante / Recibo de Pago
+        current_rate = await SettingsService.get_usd_ves_rate(db)
         recibo_num = f"REC-{now.year}-{uuid.uuid4().hex[:6].upper()}"
         recibo = ComprobantePago(
             tenant_id=tenant.id,
@@ -1140,13 +1143,13 @@ class TenantService:
             numero_control=None,
             moneda_base="USD",
             monto_usd=plan_price,
-            tasa_bcv=36.50,
-            base_imponible_ves=round(plan_price * 36.50, 2),
+            tasa_bcv=current_rate,
+            base_imponible_ves=round(plan_price * current_rate, 2),
             porcentaje_iva=0.00,
             monto_iva_ves=0.00,
             aplica_igtf=False,
             monto_igtf_ves=0.00,
-            total_ves=round(plan_price * 36.50, 2),
+            total_ves=round(plan_price * current_rate, 2),
             datos_fiscales_snapshot={
                 "concepto": f"Renovación Plan {plan.name} vía Débito de Saldo",
                 "saldo_restante": new_balance,

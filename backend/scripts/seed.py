@@ -12,6 +12,7 @@ from src.modules.auth.models import AdminUser
 from src.modules.plans.models import Plan
 from src.modules.tenants.models import Tenant, Subscription
 from src.modules.payments.models import PaymentReport
+from src.modules.settings.models import SystemSetting
 from src.core.crypto_licensing import generate_license_token, compute_token_hash
 from datetime import datetime, timedelta, timezone
 
@@ -177,6 +178,21 @@ async def seed():
             session.add(payment_sample)
 
             print("[OK] Seeded demo tenants (Supermercados El Exito, Farmacia La Pastora) and sample pending payment.")
+
+        # 4. Official Exchange Rate (System Settings)
+        rate_res = await session.execute(select(SystemSetting).where(SystemSetting.key == "usd_ves_rate"))
+        existing_rate = rate_res.scalar_one_or_none()
+        if not existing_rate:
+            default_rate = SystemSetting(
+                key="usd_ves_rate",
+                value=os.getenv("DEFAULT_USD_VES_RATE", "36.50"),
+                description="Tasa de cambio referencial oficial BCV USD a VES",
+                updated_at=datetime.now(timezone.utc),
+            )
+            session.add(default_rate)
+            print(f"[OK] Seeded initial exchange rate: {default_rate.value} Bs/USD")
+        else:
+            print(f"[INFO] Current exchange rate in database: {existing_rate.value} Bs/USD")
 
         await session.commit()
     print("Database seeding completed successfully.")

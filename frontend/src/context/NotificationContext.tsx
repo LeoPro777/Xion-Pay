@@ -57,6 +57,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               setNotifications((prev) => [item, ...prev]);
               setUnreadCount((c) => c + 1);
               setLastEventTimestamp(Date.now());
+            } else if (data.type === 'EXCHANGE_RATE_UPDATED') {
+              const item: NotificationItem = {
+                id: `rate-${Date.now()}`,
+                type: 'EXCHANGE_RATE_UPDATED',
+                message: `Tasa oficial BCV actualizada en BDD: ${Number(data.rate).toFixed(2)} Bs/USD`,
+                timestamp: new Date().toLocaleTimeString(),
+                data: { rate: data.rate },
+              };
+              setNotifications((prev) => [item, ...prev]);
+              setLastEventTimestamp(Date.now());
             } else if (data.type === 'PAYMENT_APPROVED' || data.type === 'PAYMENT_REJECTED') {
               setLastEventTimestamp(Date.now());
             }

@@ -5,7 +5,7 @@ from src.core.config import settings
 
 # Engine configuration
 engine_kwargs = {
-    "echo": settings.ENVIRONMENT == "development",
+    "echo": False,
     "future": True,
 }
 
