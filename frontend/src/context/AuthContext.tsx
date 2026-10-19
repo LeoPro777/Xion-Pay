@@ -59,6 +59,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const handleAuthSuccess = (data: AuthResponse) => {
+    sessionStorage.removeItem('xion_manual_logout');
     setToken(data.access_token);
     setUser(data.user);
     localStorage.setItem('xion_pay_token', data.access_token);
@@ -76,6 +77,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    sessionStorage.setItem('xion_manual_logout', 'true');
     setToken(null);
     setUser(null);
     localStorage.removeItem('xion_pay_token');

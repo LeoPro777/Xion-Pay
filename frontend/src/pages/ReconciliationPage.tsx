@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { useDialog } from '../context/DialogContext';
 import type { PaymentReport, TenantListItem } from '../types';
 import {
   CheckCircle,
@@ -18,6 +19,7 @@ interface ReconciliationPageProps {
 }
 
 export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEventTimestamp }) => {
+  const { confirm, showToast } = useDialog();
   const [payments, setPayments] = useState<PaymentReport[]>([]);
   const [selectedPayment, setSelectedPayment] = useState<PaymentReport | null>(null);
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -86,12 +88,21 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
 
   const handleApprove = async () => {
     if (!selectedPayment) return;
+    const ok = await confirm({
+      title: '¿Aprobar y Conciliar Pago?',
+      message: `¿Desea aprobar el reporte de pago #${selectedPayment.reference_number} de ${selectedPayment.origin_bank} por ${selectedPayment.amount} ${selectedPayment.currency} para "${selectedPayment.tenant_commercial_name || 'el comercio'}"?\n\nSe activará automáticamente su suscripción.`,
+      confirmText: 'Sí, aprobar pago',
+      variant: 'info',
+    });
+    if (!ok) return;
+
     setActionLoading(true);
     try {
       await api.post(`/payments/${selectedPayment.id}/approve`);
+      showToast('Pago aprobado y conciliado exitosamente.', 'success');
       await fetchPayments();
     } catch (err: any) {
-      alert(`Error al aprobar pago: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al aprobar pago: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -106,9 +117,10 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
       });
       setShowRejectModal(false);
       setRejectReason('');
+      showToast('Pago rechazado y notificado al comercio.', 'info');
       await fetchPayments();
     } catch (err: any) {
-      alert(`Error al rechazar pago: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al rechazar pago: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setActionLoading(false);
     }
@@ -126,8 +138,9 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
       document.body.appendChild(link);
       link.click();
       link.remove();
+      showToast('Comprobante PDF descargado exitosamente.', 'success');
     } catch (err) {
-      alert('Error descargando el comprobante PDF.');
+      showToast('Error descargando el comprobante PDF.', 'error');
     }
   };
 

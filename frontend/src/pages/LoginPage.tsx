@@ -9,28 +9,34 @@ export const LoginPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [googleClientId, setGoogleClientId] = useState<string>('');
+  const [isDevMode, setIsDevMode] = useState<boolean>(import.meta.env.DEV);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  // Auto-bypass if ?bypass=true query param is provided
+  // Auto-bypass en desarrollo si no hubo cierre de sesión manual
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('bypass') === 'true') {
+    const manualLogout = sessionStorage.getItem('xion_manual_logout') === 'true';
+    const forceBypass = params.get('bypass') === 'true';
+
+    if (forceBypass || (import.meta.env.DEV && !manualLogout)) {
       executeBypass('admin@xionpay.internal');
     }
   }, []);
 
-  // Fetch Google Client ID from backend or Vite environment
+  // Fetch Google Client ID and environment config from backend or Vite environment
   useEffect(() => {
     const loadAuthConfig = async () => {
       try {
         const envClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
         if (envClientId) {
           setGoogleClientId(envClientId);
-          return;
         }
-        const res = await api.get<{ google_client_id: string }>('/auth/config');
-        if (res.data?.google_client_id) {
+        const res = await api.get<{ google_client_id: string; is_dev?: boolean }>('/auth/config');
+        if (res.data?.google_client_id && !envClientId) {
           setGoogleClientId(res.data.google_client_id);
+        }
+        if (res.data?.is_dev !== undefined) {
+          setIsDevMode(res.data.is_dev);
         }
       } catch (e) {
         console.warn('Could not fetch auth config:', e);
@@ -148,15 +154,9 @@ export const LoginPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                const email = prompt(
-                  'Modo desarrollo activo (GOOGLE_CLIENT_ID mock).\n\nIngresa tu correo para simular inicio de sesión con Google OAuth:',
-                  devEmail
-                );
-                if (email) {
-                  loginWithGoogle(`dev-mock-${email}`).catch((err: any) => {
-                    setError(err.response?.data?.message || 'Error simulando inicio con Google.');
-                  });
-                }
+                loginWithGoogle(`dev-mock-${devEmail}`).catch((err: any) => {
+                  setError(err.response?.data?.message || 'Error simulando inicio con Google.');
+                });
               }}
               disabled={loading}
               className="w-full flex items-center justify-center space-x-2 bg-white dark:bg-zinc-800 hover:bg-slate-50 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 border border-slate-300 dark:border-zinc-700 font-medium py-2.5 px-4 rounded-xl text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-50"
@@ -190,62 +190,66 @@ export const LoginPage: React.FC = () => {
           )}
         </div>
 
-        <div className="relative flex py-1 items-center">
-          <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-          <span className="flex-shrink mx-4 text-[10px] uppercase font-mono text-slate-400 dark:text-zinc-500">
-            o Acceso Rápido / Local
-          </span>
-          <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
-        </div>
+        {isDevMode && (
+          <>
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+              <span className="flex-shrink mx-4 text-[10px] uppercase font-mono text-slate-400 dark:text-zinc-500">
+                o Acceso Rápido / Local
+              </span>
+              <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
+            </div>
 
-        {/* 1-Click Bypass Button */}
-        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-4 rounded-2xl space-y-2.5">
-          <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300">
-            <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
-            <span className="text-xs font-bold uppercase tracking-wider">
-              Acceso Directo / Bypass Rápido
-            </span>
-          </div>
-          <p className="text-[11px] text-slate-600 dark:text-zinc-300">
-            Ingresa al panel administrativo en 1 clic utilizando el perfil maestro{' '}
-            <code className="text-amber-900 dark:text-amber-200 bg-amber-100/80 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono text-[10px]">admin@xionpay.internal</code>.
-          </p>
-          <button
-            type="button"
-            onClick={() => executeBypass('admin@xionpay.internal')}
-            disabled={loading}
-            className="w-full py-2.5 bg-[#18181b] dark:bg-white hover:bg-black dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <Zap className="w-4 h-4 fill-white dark:fill-black" />
-            <span>{loading ? 'Conectando...' : 'Bypass Login (Entrar como Superadmin)'}</span>
-          </button>
-        </div>
+            {/* 1-Click Bypass Button */}
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-4 rounded-2xl space-y-2.5">
+              <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300">
+                <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
+                <span className="text-xs font-bold uppercase tracking-wider">
+                  Acceso Directo / Bypass Rápido
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-zinc-300">
+                Ingresa al panel administrativo en 1 clic utilizando el perfil maestro{' '}
+                <code className="text-amber-900 dark:text-amber-200 bg-amber-100/80 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono text-[10px]">admin@xionpay.internal</code>.
+              </p>
+              <button
+                type="button"
+                onClick={() => executeBypass('admin@xionpay.internal')}
+                disabled={loading}
+                className="w-full py-2.5 bg-[#18181b] dark:bg-white hover:bg-black dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+              >
+                <Zap className="w-4 h-4 fill-white dark:fill-black" />
+                <span>{loading ? 'Conectando...' : 'Bypass Login (Entrar como Superadmin)'}</span>
+              </button>
+            </div>
 
-        {/* Custom Whitelisted Dev Form */}
-        <form onSubmit={handleDevLogin} className="space-y-3 pt-1">
-          <div>
-            <label className="text-[11px] font-semibold text-slate-700 block mb-1">
-              Ingresar con otro correo de lista blanca:
-            </label>
-            <input
-              type="email"
-              required
-              value={devEmail}
-              onChange={(e) => setDevEmail(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-slate-800 font-mono"
-            />
-          </div>
+            {/* Custom Whitelisted Dev Form */}
+            <form onSubmit={handleDevLogin} className="space-y-3 pt-1">
+              <div>
+                <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300 block mb-1">
+                  Ingresar con otro correo de lista blanca:
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={devEmail}
+                  onChange={(e) => setDevEmail(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 font-mono"
+                />
+              </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs rounded-xl flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer border border-slate-200"
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span>{loading ? 'Verificando Sesión...' : 'Ingresar con este correo'}</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </form>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-2.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 font-semibold text-xs rounded-xl flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer border border-slate-200 dark:border-zinc-700"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>{loading ? 'Verificando Sesión...' : 'Ingresar con este correo'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </>
+        )}
 
         <div className="text-center pt-2 text-[10px] text-slate-400">
           Sesiones protegidas con tokens criptográficos JWT y cookies seguras.

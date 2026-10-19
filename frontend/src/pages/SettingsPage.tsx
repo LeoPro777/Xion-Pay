@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../context/DialogContext';
 import type { SystemSettings, AdminUser } from '../types';
 import {
   DollarSign,
@@ -26,6 +27,7 @@ interface SettingsPageProps {
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ onRateUpdated, onOpenPreferences }) => {
   const { user } = useAuth();
+  const { confirm, showToast } = useDialog();
   const [activeSection, setActiveSection] = useState<'rate' | 'accounts' | 'crypto' | 'admins'>('rate');
 
   // Rate state
@@ -130,12 +132,24 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onRateUpdated, onOpe
     }
   };
 
-  const handleToggleAdminStatus = async (adminId: string, currentStatus: boolean) => {
+  const handleToggleAdminStatus = async (adminId: string, currentStatus: boolean, adminName?: string) => {
+    const willDeactivate = currentStatus;
+    const ok = await confirm({
+      title: willDeactivate ? '¿Desactivar administrador?' : '¿Activar administrador?',
+      message: willDeactivate
+        ? `¿Desea revocar el acceso administrativo a "${adminName || 'este usuario'}"?`
+        : `¿Desea restaurar el acceso administrativo a "${adminName || 'este usuario'}"?`,
+      confirmText: willDeactivate ? 'Sí, desactivar' : 'Sí, activar',
+      variant: willDeactivate ? 'danger' : 'info',
+    });
+    if (!ok) return;
+
     try {
       await api.patch(`/auth/admins/${adminId}/status?is_active=${!currentStatus}`);
+      showToast(`Administrador ${willDeactivate ? 'desactivado' : 'activado'} exitosamente.`, 'success');
       fetchAdmins();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error cambiando estado del administrador.');
+      showToast(err.response?.data?.message || 'Error cambiando estado del administrador.', 'error');
     }
   };
 
@@ -546,7 +560,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onRateUpdated, onOpe
                       <td className="py-3.5 px-6 text-right">
                         {a.email !== user?.email && (
                           <button
-                            onClick={() => handleToggleAdminStatus(a.id, a.is_active)}
+                            onClick={() => handleToggleAdminStatus(a.id, a.is_active, a.full_name)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
                             title={a.is_active ? 'Desactivar cuenta' : 'Activar cuenta'}
                           >

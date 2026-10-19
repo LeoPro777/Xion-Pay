@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { PreferencesProvider } from './context/PreferencesContext';
+import { DialogProvider } from './context/DialogContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
@@ -110,13 +111,15 @@ const MainLayout: React.FC = () => {
 
 export function App() {
   return (
-    <PreferencesProvider>
-      <AuthProvider>
-        <NotificationProvider>
-          <MainLayout />
-        </NotificationProvider>
-      </AuthProvider>
-    </PreferencesProvider>
+    <DialogProvider>
+      <PreferencesProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <MainLayout />
+          </NotificationProvider>
+        </AuthProvider>
+      </PreferencesProvider>
+    </DialogProvider>
   );
 }
 

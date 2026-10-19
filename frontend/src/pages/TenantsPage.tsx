@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { useDialog } from '../context/DialogContext';
 import type { TenantListItem, TenantDetail, WebhookLogItem, Plan, FiscalProfile } from '../types';
 import {
   Search,
@@ -10,7 +11,6 @@ import {
   PlusCircle,
   X,
   Save,
-  ShieldCheck,
   MessageCircle,
   FileText,
   Clock,
@@ -19,15 +19,19 @@ import {
   ChevronUp,
   User,
   CheckCircle2,
-  Lock,
+  RefreshCw,
   Edit3,
   PowerOff,
   Wallet,
   Zap,
-  RefreshCw,
+  Pencil,
+  Ban,
+  Trash2,
+  MoreHorizontal,
 } from 'lucide-react';
 
 export const TenantsPage: React.FC = () => {
+  const { confirm, showToast, showAlert } = useDialog();
   const [tenants, setTenants] = useState<TenantListItem[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [search, setSearch] = useState<string>('');
@@ -192,7 +196,7 @@ export const TenantsPage: React.FC = () => {
           msg += '\n' + JSON.stringify(err.response.data.details);
         }
       }
-      alert(`Error al registrar el cliente:\n${msg}`);
+      showToast(`Error al registrar el cliente:\n${msg}`, 'error');
     } finally {
       setCreating(false);
     }
@@ -218,7 +222,7 @@ export const TenantsPage: React.FC = () => {
       const logsRes = await api.get<WebhookLogItem[]>(`/webhooks/logs/${tenantId}`);
       setWebhookLogs(logsRes.data);
     } catch (err) {
-      alert('Error cargando la ficha del cliente.');
+      showToast('Error cargando la ficha del cliente.', 'error');
     }
   };
 
@@ -228,11 +232,11 @@ export const TenantsPage: React.FC = () => {
     try {
       const res = await api.put<FiscalProfile>(`/tenants/${selectedTenant.id}/fiscal-profile`, fiscalData);
       setFiscalData(res.data);
-      alert('Perfil fiscal actualizado exitosamente.');
+      showToast('Perfil fiscal actualizado exitosamente.', 'success');
       await fetchTenants();
       openTenantDetail(selectedTenant.id);
     } catch (err: any) {
-      alert(`Error al guardar datos fiscales: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al guardar datos fiscales: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setSavingFiscal(false);
     }
@@ -249,9 +253,9 @@ export const TenantsPage: React.FC = () => {
       });
       setShowComprobanteModal(false);
       openTenantDetail(selectedTenant.id);
-      alert('Comprobante emitido con éxito.');
+      showToast('Comprobante emitido con éxito.', 'success');
     } catch (err: any) {
-      alert(`Error emitiendo comprobante: ${err.response?.data?.message || err.message}`);
+      showToast(`Error emitiendo comprobante: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setGeneratingComprobante(false);
     }
@@ -302,7 +306,7 @@ export const TenantsPage: React.FC = () => {
       if (selectedTenant && selectedTenant.id === editingTenant.id) {
         await openTenantDetail(editingTenant.id);
       }
-      alert('Datos del cliente actualizados exitosamente.');
+      showToast('Datos del cliente actualizados exitosamente.', 'success');
     } catch (err: any) {
       let msg = err.response?.data?.message || err.message;
       if (err.response?.data?.details) {
@@ -312,7 +316,7 @@ export const TenantsPage: React.FC = () => {
           msg += '\n' + JSON.stringify(err.response.data.details);
         }
       }
-      alert(`Error al actualizar cliente:\n${msg}`);
+      showToast(`Error al actualizar cliente:\n${msg}`, 'error');
     } finally {
       setSavingEdit(false);
     }
@@ -336,42 +340,60 @@ export const TenantsPage: React.FC = () => {
         reason: rechargeReason,
         auto_renew: rechargeAutoRenew,
       });
-      alert(res.data.message);
+      showToast(res.data.message || 'Saldo recargado exitosamente.', 'success');
       setShowRechargeModal(false);
       await fetchTenants();
       if (selectedTenant && selectedTenant.id === rechargeTenant.id) {
         await openTenantDetail(rechargeTenant.id);
       }
     } catch (err: any) {
-      alert(`Error al recargar saldo: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al recargar saldo: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setRecharging(false);
     }
   };
 
   const handleRenewFromBalance = async (tenantId: string, clientName?: string) => {
-    if (!window.confirm(`¿Desea debitar el costo del plan directamente de la billetera de "${clientName || 'este cliente'}" para renovar inmediatamente su suscripción y emitir su licencia criptográfica RS256?`)) return;
+    const ok = await confirm({
+      title: '¿Renovar suscripción desde saldo?',
+      message: `¿Desea debitar el costo del plan directamente de la billetera de "${clientName || 'este cliente'}" para renovar inmediatamente su suscripción y emitir su licencia criptográfica RS256?`,
+      confirmText: 'Sí, renovar suscripción',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     try {
       await api.post(`/tenants/${tenantId}/renew-from-balance`);
-      alert('¡Suscripción renovada exitosamente! Licencia emitida y nota de entrega despachada al canal configurado.');
+      showToast('¡Suscripción renovada exitosamente! Licencia emitida y nota de entrega despachada.', 'success');
       await fetchTenants();
       if (selectedTenant && selectedTenant.id === tenantId) {
         await openTenantDetail(tenantId);
       }
     } catch (err: any) {
-      alert(`Error al renovar suscripción desde saldo: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al renovar suscripción desde saldo: ${err.response?.data?.message || err.message}`, 'error');
     }
   };
 
   const handleProcessCycle = async () => {
-    if (!window.confirm('¿Desea procesar el ciclo de facturación y cobro automático ahora?\n- Si el cliente tiene saldo suficiente, su suscripción se renueva y se debita el monto.\n- Si reportó un pago o está en prórroga, se mantiene activo.\n- Si está vencido sin saldo, se suspende automáticamente.')) return;
+    const ok = await confirm({
+      title: '¿Ejecutar ciclo de facturación y cobro automático?',
+      message: '¿Desea procesar el ciclo de facturación y cobro automático ahora?\n\n• Si el cliente tiene saldo suficiente, su suscripción se renueva y se debita el monto.\n• Si reportó un pago o está en prórroga, se mantiene activo.\n• Si está vencido sin saldo, se suspende automáticamente.',
+      confirmText: 'Sí, procesar ciclo',
+      variant: 'warning',
+    });
+    if (!ok) return;
+
     setProcessingCycle(true);
     try {
       const res = await api.post('/tenants/billing/process-cycle');
-      alert(`Ciclo de cobro ejecutado exitosamente:\n✅ Renovados automáticamente con saldo: ${res.data.renewed_count}\n⏱️ Comercios mantenidos en prórroga: ${res.data.grace_period_count}\n🚫 Suspendidos por saldo insuficiente: ${res.data.suspended_count}`);
+      await showAlert(
+        `Resultados del ciclo:\n\n✅ Renovados automáticamente con saldo: ${res.data.renewed_count}\n⏱️ Comercios mantenidos en prórroga: ${res.data.grace_period_count}\n🚫 Suspendidos por saldo insuficiente: ${res.data.suspended_count}`,
+        'Ciclo de Facturación Completado',
+        'success'
+      );
       await fetchTenants();
     } catch (err: any) {
-      alert(`Error ejecutando ciclo: ${err.response?.data?.message || err.message}`);
+      showToast(`Error ejecutando ciclo: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setProcessingCycle(false);
     }
@@ -385,19 +407,26 @@ export const TenantsPage: React.FC = () => {
       ? `¿Desea reactivar al cliente "${clientName || 'seleccionado'}"?\nEl cliente volverá a tener acceso y se activarán sus licencias.`
       : `¿Está seguro de desactivar al cliente "${clientName || 'seleccionado'}"?\nEl acceso será revocado y se emitirá el evento de suspensión a sus sistemas asociados.`;
 
-    if (!window.confirm(confirmMessage)) return;
+    const ok = await confirm({
+      title: isSuspended ? '¿Reactivar cliente?' : '¿Suspender cliente?',
+      message: confirmMessage,
+      confirmText: isSuspended ? 'Sí, reactivar' : 'Sí, suspender',
+      variant: isSuspended ? 'info' : 'danger',
+    });
+    if (!ok) return;
 
     try {
       await api.patch(`/tenants/${tenantId}/status`, {
         status: newStatus,
         reason: isSuspended ? 'Reactivación administrativa desde CRM' : 'Desactivación administrativa desde CRM',
       });
+      showToast(`Cliente ${isSuspended ? 'reactivado' : 'suspendido'} con éxito.`, 'success');
       await fetchTenants();
       if (selectedTenant && selectedTenant.id === tenantId) {
         await openTenantDetail(tenantId);
       }
     } catch (err: any) {
-      alert(`Error al ${actionText} cliente: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al ${actionText} cliente: ${err.response?.data?.message || err.message}`, 'error');
     }
   };
 
@@ -411,9 +440,9 @@ export const TenantsPage: React.FC = () => {
       setShowCourtesyModal(false);
       await fetchTenants();
       openTenantDetail(selectedTenant.id);
-      alert(`Se otorgaron exitosamente ${courtesyDays} días de cortesía.`);
+      showToast(`Se otorgaron exitosamente ${courtesyDays} días de cortesía.`, 'success');
     } catch (err: any) {
-      alert(`Error al otorgar cortesía: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al otorgar cortesía: ${err.response?.data?.message || err.message}`, 'error');
     }
   };
 
@@ -423,9 +452,9 @@ export const TenantsPage: React.FC = () => {
       await api.post(`/webhooks/test/${selectedTenant.id}`);
       const logsRes = await api.get<WebhookLogItem[]>(`/webhooks/logs/${selectedTenant.id}`);
       setWebhookLogs(logsRes.data);
-      alert('Webhook de prueba despachado con firma HMAC SHA-256.');
+      showToast('Webhook de prueba despachado con firma HMAC SHA-256.', 'success');
     } catch (err: any) {
-      alert(`Error al enviar webhook de prueba: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al enviar webhook de prueba: ${err.response?.data?.message || err.message}`, 'error');
     }
   };
 
@@ -438,148 +467,151 @@ export const TenantsPage: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2">
         <div>
           <div className="flex items-center space-x-2">
-            <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight m-0">
+            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight m-0">
               Gestión de Clientes (CRM)
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-300">
-              SaaS Multi-tenant
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400">
+              SaaS multiusuario
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-1 max-w-2xl">
+          <p className="text-xs text-slate-500 dark:text-zinc-400 mt-1 max-w-2xl">
             Control integral de suscriptores, monitoreo de pruebas de 30 días procedentes de Xion-Manager y metadatos fiscales desacoplados del SENIAT.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 self-start sm:self-auto">
+        <div className="flex items-center space-x-2.5 self-start sm:self-auto">
           <button
             onClick={handleProcessCycle}
             disabled={processingCycle}
-            className="px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl flex items-center space-x-2 transition-all cursor-pointer border border-slate-300 disabled:opacity-50"
-            title="Ejecutar ciclo de cobro automático (renueva con saldo y suspende vencidos sin saldo)"
+            className="px-3.5 py-1.5 bg-white dark:bg-[#121215] hover:bg-slate-50 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-medium rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer border border-slate-200/70 dark:border-zinc-800 disabled:opacity-50"
+            title="Ejecutar ciclo de cobro automático"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${processingCycle ? 'animate-spin text-accent' : 'text-slate-600'}`} />
-            <span>{processingCycle ? 'Procesando Ciclo...' : 'Ciclo de Cobro Auto'}</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${processingCycle ? 'animate-spin text-purple-600' : 'text-slate-400'}`} />
+            <span>{processingCycle ? 'Procesando...' : 'Ciclo de Cobro'}</span>
           </button>
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2.5 bg-accent text-xs font-semibold rounded-xl flex items-center space-x-2 transition-all shadow-xs cursor-pointer hover:opacity-90"
+            className="px-3.5 py-1.5 bg-[#7c3aed] hover:bg-[#6d28d9] text-white text-xs font-medium rounded-xl flex items-center space-x-1.5 transition-all cursor-pointer shadow-none"
           >
-            <PlusCircle className="w-4 h-4 text-[var(--accent-fg)]" />
+            <PlusCircle className="w-3.5 h-3.5 text-white" />
             <span>Nuevo Cliente</span>
           </button>
         </div>
       </div>
 
       {/* CRM Metric Badges */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5">
+        <div className="bg-white dark:bg-[#121215] border border-slate-100 dark:border-zinc-800/80 rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Total Clientes</span>
-            <User className="w-4 h-4 text-slate-400" />
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Clientes Totales</span>
+            <User className="w-3.5 h-3.5 text-slate-300 dark:text-zinc-600" />
           </div>
-          <p className="text-2xl font-extrabold text-slate-900 mt-1">{totalClients}</p>
-          <span className="text-[10px] text-slate-400 font-medium">En base de datos</span>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5">{totalClients}</p>
+          <span className="text-[11px] text-slate-400 dark:text-zinc-500">En base de datos</span>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+        <div className="bg-white dark:bg-[#121215] border border-slate-100 dark:border-zinc-800/80 rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-amber-600 uppercase tracking-wider">Pruebas 30 Días</span>
-            <Clock className="w-4 h-4 text-amber-500" />
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Pruebas 30 Días</span>
+            <Clock className="w-3.5 h-3.5 text-slate-300 dark:text-zinc-600" />
           </div>
-          <p className="text-2xl font-extrabold text-amber-600 mt-1">{trialClients}</p>
-          <span className="text-[10px] text-slate-400 font-medium">Onboarding Xion-Manager</span>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5">{trialClients}</p>
+          <span className="text-[11px] text-slate-400 dark:text-zinc-500">Incorporación a Xion-Manager</span>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+        <div className="bg-white dark:bg-[#121215] border border-slate-100 dark:border-zinc-800/80 rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-emerald-600 uppercase tracking-wider">Suscripciones Activas</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Suscripciones Activas</span>
+            <CheckCircle2 className="w-3.5 h-3.5 text-slate-300 dark:text-zinc-600" />
           </div>
-          <p className="text-2xl font-extrabold text-emerald-600 mt-1">{activeClients}</p>
-          <span className="text-[10px] text-slate-400 font-medium">Pagos al día</span>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5">{activeClients}</p>
+          <span className="text-[11px] text-slate-400 dark:text-zinc-500">Pagos al día</span>
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
+        <div className="bg-white dark:bg-[#121215] border border-slate-100 dark:border-zinc-800/80 rounded-2xl p-4 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">SENIAT Fiscal</span>
-            <FileText className="w-4 h-4 text-indigo-500" />
+            <span className="text-[10px] font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">Fiscal del SENIAT</span>
+            <FileText className="w-3.5 h-3.5 text-slate-300 dark:text-zinc-600" />
           </div>
-          <p className="text-2xl font-extrabold text-slate-900 mt-1">{seniatActiveCount}</p>
-          <span className="text-[10px] text-slate-400 font-medium">
+          <p className="text-2xl font-bold text-slate-900 dark:text-white mt-1.5">{seniatActiveCount}</p>
+          <span className="text-[11px] text-slate-400 dark:text-zinc-500">
             {seniatActiveCount > 0 ? 'Con Facturación Activa' : 'Modo MVP (Dormido)'}
           </span>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="flex flex-col sm:flex-row gap-3 pt-1">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-2.5" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por cliente, contacto, WhatsApp, RIF o email..."
-            className="w-full bg-white border border-slate-200/80 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-slate-800 shadow-xs"
+            className="w-full bg-white dark:bg-[#121215] border border-slate-200/60 dark:border-zinc-800/80 rounded-full pl-9 pr-4 py-2 text-xs text-slate-800 dark:text-zinc-200 placeholder:text-slate-400 focus:outline-none focus:border-slate-400 dark:focus:border-zinc-600 transition-colors shadow-none"
           />
         </div>
 
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0">
+        <div className="flex items-center space-x-1 overflow-x-auto pb-1 sm:pb-0">
           {[
             { id: '', label: 'Todos' },
             { id: 'trial', label: 'Prueba (Trial)' },
             { id: 'active', label: 'Activos' },
             { id: 'suspended', label: 'Desactivados (Suspendidos)' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setStatusFilter(tab.id)}
-              className={`px-3 py-2 text-xs font-semibold rounded-xl whitespace-nowrap transition-all cursor-pointer ${
-                statusFilter === tab.id
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'bg-white border border-slate-200/80 text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          ].map((tab) => {
+            const isSelected = statusFilter === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setStatusFilter(tab.id)}
+                className={`px-3.5 py-1.5 text-xs font-medium rounded-full transition-all cursor-pointer whitespace-nowrap ${
+                  isSelected
+                    ? 'bg-slate-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-none'
+                    : 'text-slate-500 hover:text-slate-900 dark:text-zinc-400 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-zinc-800/50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Clients Table */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
+      <div className="bg-white dark:bg-[#121215] border border-slate-100 dark:border-zinc-800/80 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-700">
-            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-100">
+          <table className="w-full text-left text-xs text-slate-700 dark:text-zinc-300">
+            <thead className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-zinc-500 border-b border-slate-100 dark:border-zinc-800/80 bg-transparent">
               <tr>
-                <th className="py-3 px-4">Cliente / Suscriptor</th>
-                <th className="py-3 px-4">Identificación</th>
-                <th className="py-3 px-4">Saldo Billetera</th>
-                <th className="py-3 px-4">Plan & Conteo Regresivo</th>
-                <th className="py-3 px-4">Estado CRM</th>
-                <th className="py-3 px-4">Canal Nota</th>
-                <th className="py-3 px-4">Régimen SENIAT</th>
-                <th className="py-3 px-4 text-right">Acción</th>
+                <th className="py-3.5 px-6 min-w-[200px] whitespace-nowrap font-medium">Cliente / Suscriptor</th>
+                <th className="py-3.5 px-6 min-w-[130px] whitespace-nowrap font-medium">Identificación</th>
+                <th className="py-3.5 px-6 min-w-[100px] whitespace-nowrap font-medium">Saldo</th>
+                <th className="py-3.5 px-6 min-w-[170px] whitespace-nowrap font-medium">Plan y Conteo Regresivo</th>
+                <th className="py-3.5 px-6 min-w-[120px] whitespace-nowrap font-medium">Estado</th>
+                <th className="py-3.5 px-6 min-w-[100px] whitespace-nowrap font-medium">Canal</th>
+                <th className="py-3.5 px-6 min-w-[110px] whitespace-nowrap font-medium">Régimen</th>
+                <th className="py-3.5 px-6 min-w-[130px] text-right whitespace-nowrap font-medium">Acciones</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100/80 dark:divide-zinc-800/60">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-10 text-slate-500">
-                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-slate-900 mb-2"></div>
-                    <p>Cargando directorio de clientes...</p>
+                  <td colSpan={8} className="text-center py-14 text-slate-400 dark:text-zinc-500">
+                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-slate-300 border-t-slate-800 dark:border-zinc-700 dark:border-t-white mb-2"></div>
+                    <p className="text-xs font-medium">Cargando directorio de clientes...</p>
                   </td>
                 </tr>
               ) : tenants.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-slate-500">
-                    <Building2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-                    <p className="font-semibold text-slate-700">No se encontraron clientes registrados</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
+                  <td colSpan={8} className="text-center py-16 text-slate-400 dark:text-zinc-500">
+                    <Building2 className="w-8 h-8 mx-auto text-slate-300 dark:text-zinc-700 mb-2" />
+                    <p className="font-semibold text-slate-800 dark:text-zinc-200 text-sm">No se encontraron clientes registrados</p>
+                    <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1">
                       Los clientes ingresados desde Xion-Manager aparecerán automáticamente aquí.
                     </p>
                   </td>
@@ -588,168 +620,134 @@ export const TenantsPage: React.FC = () => {
                 tenants.map((t) => {
                   const isTrial = t.status === 'trial';
                   const daysRem = t.trial_days_remaining ?? 0;
-                  const hasSufficientBalance = (t.wallet_balance ?? 0) >= (t.active_plan_price ?? 29.0);
 
                   return (
-                    <tr key={t.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4">
+                    <tr key={t.id} className="hover:bg-slate-50/50 dark:hover:bg-zinc-900/30 transition-colors">
+                      {/* Cliente / Suscriptor */}
+                      <td className="py-4 px-6 whitespace-nowrap">
                         <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center font-bold text-slate-700 text-xs shrink-0">
-                            {t.commercial_name.charAt(0).toUpperCase()}
+                          <div className="w-8 h-8 rounded-full bg-slate-200/70 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 flex items-center justify-center text-xs font-semibold shrink-0">
+                            {t.commercial_name ? t.commercial_name.trim().charAt(0).toUpperCase() : 'C'}
                           </div>
-                          <div>
-                            <span className="font-bold text-slate-900 block">{t.commercial_name}</span>
-                            {t.contact_name ? (
-                              <span className="text-[11px] text-slate-500 flex items-center space-x-1">
-                                <User className="w-3 h-3 text-slate-400" />
-                                <span>{t.contact_name}</span>
-                              </span>
-                            ) : (
-                              <span className="text-[10px] text-slate-400">Sin contacto asignado</span>
-                            )}
+                          <div className="min-w-0">
+                            <button
+                              onClick={() => openTenantDetail(t.id)}
+                              className="font-semibold text-slate-800 dark:text-zinc-100 text-xs hover:text-purple-600 transition-colors block text-left truncate cursor-pointer"
+                              title={t.commercial_name}
+                            >
+                              {t.commercial_name}
+                            </button>
+                            <span className="text-[11px] text-slate-400 dark:text-zinc-500 block truncate">
+                              {t.contact_name || 'Sin contacto'}
+                            </span>
                           </div>
                         </div>
                       </td>
 
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-mono font-medium bg-slate-100 text-slate-800 border border-slate-200">
-                          {t.id_doc_type || 'V'}-{t.id_doc_number || t.tax_id}
+                      {/* Identificación - Texto plano */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <span className="font-mono text-xs text-slate-600 dark:text-zinc-400">
+                          {t.id_doc_number ? `${t.id_doc_type || 'V'}-${t.id_doc_number}` : (t.tax_id || '—')}
                         </span>
                       </td>
 
-                      {/* Billetera y Saldo */}
-                      <td className="py-3.5 px-4">
-                        <div className="flex items-center space-x-1.5">
-                          <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg border ${
-                            (t.wallet_balance ?? 0) > 0
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-slate-100 text-slate-700 border-slate-200'
-                          }`}>
-                            ${(t.wallet_balance ?? 0).toFixed(2)} USD
-                          </span>
-                          <button
-                            onClick={() => openRechargeModal(t)}
-                            className="p-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition-colors cursor-pointer"
-                            title="Recargar saldo en billetera"
-                          >
-                            <Wallet className="w-3.5 h-3.5" />
-                          </button>
+                      {/* Saldo - Texto plano */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="text-xs font-mono text-slate-800 dark:text-zinc-200">
+                          <span className="font-medium">${(t.wallet_balance ?? 0).toFixed(2)}</span>
+                          <span className="text-[10px] text-slate-400 font-sans block">USD</span>
                         </div>
                       </td>
 
                       {/* Plan y Conteo Regresivo */}
-                      <td className="py-3.5 px-4">
-                        <div className="space-y-1">
-                          <div className="flex items-center space-x-1 text-slate-800 font-semibold text-[11px]">
-                            <span>{t.active_plan_name || 'Plan Estándar'}</span>
-                            {t.active_plan_price !== undefined && t.active_plan_price > 0 && (
-                              <span className="text-slate-500 font-mono text-[10px]">(${t.active_plan_price.toFixed(2)})</span>
-                            )}
-                          </div>
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="space-y-0.5">
+                          <span className="text-xs text-slate-800 dark:text-zinc-200 font-medium block">
+                            {t.active_plan_name || 'Xion'} {t.active_plan_price !== undefined ? `$ ${t.active_plan_price.toFixed(2)} USD` : '$ 29,00 USD'}
+                          </span>
 
                           {t.in_grace_period ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-300 animate-pulse">
-                              <Clock className="w-3 h-3 text-amber-500" />
-                              <span>Prórroga activa</span>
+                            <span className="text-[11px] text-amber-600 dark:text-amber-500 font-medium block">
+                              Prorroga activa
                             </span>
                           ) : t.is_due ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300">
-                              <Clock className="w-3 h-3 text-rose-500" />
-                              <span>¡Cobro Vencido!</span>
+                            <span className="text-[11px] text-rose-500 dark:text-rose-400 font-medium block">
+                              Cobro vencido
                             </span>
                           ) : t.countdown_days !== undefined ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              <Clock className="w-3 h-3 text-emerald-600" />
-                              <span>Cobro en: {t.countdown_days}d {t.countdown_hours ?? 0}h</span>
+                            <span className="text-[11px] text-emerald-600 dark:text-emerald-500 font-medium block">
+                              Cobro en: {t.countdown_days}d {t.countdown_hours ?? 0}h
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-400 font-mono">Sin ciclo</span>
+                            <span className="text-[11px] text-slate-400 block">Sin ciclo</span>
                           )}
                         </div>
                       </td>
 
-                      {/* Estado CRM */}
-                      <td className="py-3.5 px-4">
+                      {/* Estado CRM - Texto plano en color sutil */}
+                      <td className="py-4 px-6 whitespace-nowrap">
                         {isTrial ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                              <Clock className="w-3 h-3 text-amber-500" />
-                              <span>Prueba 30 Días</span>
-                            </span>
-                            <span className="text-[10px] text-slate-500 block font-mono">
-                              {daysRem > 0 ? `Quedan ${daysRem} días` : 'Prueba finalizada'}
-                            </span>
-                          </div>
+                          <span className="text-xs font-medium text-amber-600 dark:text-amber-500">
+                            Prueba ({daysRem > 0 ? `${daysRem} días` : 'finalizada'})
+                          </span>
                         ) : t.status === 'active' ? (
-                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                            <span>Activo</span>
+                          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-500">
+                            Activo
                           </span>
                         ) : (
-                          <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            <PowerOff className="w-3 h-3 text-rose-500" />
-                            <span>Suspendido</span>
+                          <span className="text-xs font-medium text-rose-500 dark:text-rose-400">
+                            Suspendido
                           </span>
                         )}
                       </td>
 
-                      {/* Canal Nota de Entrega */}
-                      <td className="py-3.5 px-4">
-                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                          {t.delivery_channel === 'whatsapp' ? '💬 WhatsApp' : t.delivery_channel === 'telegram' ? '✈️ Telegram' : t.delivery_channel === 'all' ? '🌐 Todos' : '📧 Email'}
+                      {/* Canal - Texto plano */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <span className="text-xs font-medium text-slate-700 dark:text-zinc-300 uppercase">
+                          {t.delivery_channel === 'whatsapp' ? 'WhatsApp' : t.delivery_channel === 'telegram' ? 'Telegram' : t.delivery_channel === 'all' ? 'Todos' : 'Correo'}
                         </span>
                       </td>
 
-                      <td className="py-3.5 px-4">
-                        {t.activo_seniat ? (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            <ShieldCheck className="w-3 h-3 text-indigo-500" />
-                            <span>SENIAT Activo</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 border border-slate-200">
-                            <Lock className="w-3 h-3 text-slate-400" />
-                            <span>MVP (Dormido)</span>
-                          </span>
-                        )}
+                      {/* Régimen SENIAT - Texto plano */}
+                      <td className="py-4 px-6 whitespace-nowrap">
+                        <div className="text-xs font-medium text-slate-800 dark:text-zinc-200">SENIAT</div>
+                        <div className="text-[11px] text-slate-400 dark:text-zinc-500">{t.activo_seniat ? 'Activo' : 'MVP'}</div>
                       </td>
 
-                      <td className="py-3.5 px-4 text-right">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          {(t.is_due || t.status === 'suspended') && hasSufficientBalance && (
-                            <button
-                              onClick={() => handleRenewFromBalance(t.id, t.commercial_name)}
-                              className="px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white text-[11px] font-bold rounded-xl transition-all shadow-xs flex items-center space-x-1 cursor-pointer"
-                              title="Renovar suscripción debitando saldo acumulado"
-                            >
-                              <Zap className="w-3 h-3" />
-                              <span>Renovar</span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => openTenantDetail(t.id)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                            title="Ver Ficha CRM Completa"
-                          >
-                            Ficha CRM
-                          </button>
+                      {/* Acciones Compactas - Iconos delgados outline */}
+                      <td className="py-4 px-6 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end space-x-2">
                           <button
                             onClick={() => openEditModal(t)}
-                            className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-xl transition-colors cursor-pointer"
-                            title="Editar Datos del Cliente"
+                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                            title="Editar datos del cliente"
                           >
-                            <Edit3 className="w-3.5 h-3.5" />
+                            <Pencil className="w-4 h-4 stroke-[1.5]" />
                           </button>
                           <button
                             onClick={() => handleToggleStatus(t.id, t.status, t.commercial_name)}
-                            className={`p-1.5 rounded-xl transition-colors cursor-pointer ${
+                            className={`p-1 transition-colors cursor-pointer ${
                               t.status === 'suspended' || t.status === 'frozen'
-                                ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
-                                : 'bg-rose-50 hover:bg-rose-100 text-rose-700'
+                                ? 'text-emerald-500 hover:text-emerald-700'
+                                : 'text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200'
                             }`}
-                            title={t.status === 'suspended' || t.status === 'frozen' ? 'Reactivar Cliente' : 'Desactivar Cliente'}
+                            title={t.status === 'suspended' || t.status === 'frozen' ? 'Reactivar Cliente' : 'Bloquear / Suspender'}
                           >
-                            <PowerOff className="w-3.5 h-3.5" />
+                            <Ban className="w-4 h-4 stroke-[1.5]" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleStatus(t.id, t.status, t.commercial_name)}
+                            className="p-1 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                            title="Desactivar / Suspender"
+                          >
+                            <Trash2 className="w-4 h-4 stroke-[1.5]" />
+                          </button>
+                          <button
+                            onClick={() => openTenantDetail(t.id)}
+                            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                            title="Ver ficha CRM completa"
+                          >
+                            <MoreHorizontal className="w-4 h-4 stroke-[1.5]" />
                           </button>
                         </div>
                       </td>

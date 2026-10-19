@@ -76,19 +76,23 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Exchange Rate Pill */}
         <button
           onClick={onOpenSettings}
-          className="hidden sm:flex items-center bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 hover:border-slate-400 dark:hover:border-zinc-500 transition-colors px-3.5 py-1.5 rounded-xl text-xs text-slate-700 dark:text-zinc-300 cursor-pointer shadow-xs"
+          className="hidden sm:inline-flex items-center h-8 px-3 rounded-xl border border-slate-200 dark:border-zinc-700/80 bg-slate-50 dark:bg-zinc-800/70 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer shadow-xs gap-1.5"
           title="Configurar Tasa de Cambio"
         >
-          <span className="text-[11px] text-slate-500 dark:text-zinc-400 mr-1.5">Tasa BCV:</span>
-          <span className="font-extrabold text-slate-900 dark:text-white text-xs font-mono">
+          <span className="text-[11px] text-slate-500 dark:text-zinc-400">Tasa BCV:</span>
+          <span className="font-extrabold text-slate-900 dark:text-white font-mono tracking-tight">
             {currentRate.toFixed(2)} Bs
           </span>
         </button>
 
         {/* Connected Status Pill */}
-        <div className="hidden md:flex items-center space-x-1.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xs">
-          <Wifi className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Conectado</span>
+        <div className="hidden md:inline-flex items-center h-8 px-3 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium shadow-xs gap-1.5">
+          <span className="relative flex h-2 w-2 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span className="font-semibold text-xs">Conectado</span>
         </div>
 
 

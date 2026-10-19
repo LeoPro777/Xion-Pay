@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
+import { useDialog } from '../context/DialogContext';
 import type { Plan } from '../types';
 import { Layers, Check, Cpu, Store, PlusCircle, Edit3, X, Save } from 'lucide-react';
 
 export const PlansPage: React.FC = () => {
+  const { showToast } = useDialog();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -99,10 +101,11 @@ export const PlansPage: React.FC = () => {
         // POST create
         await api.post('/plans', payload);
       }
+      showToast(editingPlan ? 'Plan actualizado exitosamente.' : 'Plan creado exitosamente.', 'success');
       setShowModal(false);
       await fetchPlans();
     } catch (err: any) {
-      alert(`Error al guardar el plan: ${err.response?.data?.message || err.message}`);
+      showToast(`Error al guardar el plan: ${err.response?.data?.message || err.message}`, 'error');
     } finally {
       setSaving(false);
     }

@@ -25,6 +25,7 @@ yarn-error.log*
 .env.local
 .env.*.local
 !.env.example
+secrets/
 
 # Local SQLite databases
 *.db
@@ -40,3 +41,4 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+.gitignore

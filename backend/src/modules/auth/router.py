@@ -1,6 +1,6 @@
 import uuid
 from typing import List
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.database import get_db
 from src.core.security import get_current_admin, require_role
@@ -20,9 +20,12 @@ router = APIRouter(prefix="/auth", tags=["Autenticación"])
 
 @router.get("/config")
 async def get_auth_config():
-    """Exposes public authentication configuration (Google Client ID) to frontend."""
+    """Exposes public authentication configuration (Google Client ID and environment) to frontend."""
+    is_dev = settings.ENVIRONMENT.lower() in ("development", "dev", "local")
     return {
         "google_client_id": settings.GOOGLE_CLIENT_ID,
+        "environment": settings.ENVIRONMENT,
+        "is_dev": is_dev,
     }
 
 
@@ -45,7 +48,13 @@ async def dev_login(
 ):
     """
     Development endpoint to easily authenticate with any whitelisted admin email.
+    Blocked in production for security.
     """
+    if settings.ENVIRONMENT.lower() == "production":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bypass / Login de desarrollo deshabilitado en entorno de producción.",
+        )
     return await AuthService.dev_login(db, payload.email)
 
 
