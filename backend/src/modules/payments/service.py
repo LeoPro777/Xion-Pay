@@ -174,6 +174,7 @@ class PaymentService:
         status_filter: Optional[str] = "pending",
         bank: Optional[str] = None,
         tenant_id: Optional[uuid.UUID] = None,
+        limit: Optional[int] = None,
     ) -> List[PaymentReportResponse]:
         query = (
             select(PaymentReport)
@@ -184,12 +185,14 @@ class PaymentService:
             .order_by(PaymentReport.reported_at.desc())
         )
 
-        if status_filter:
+        if status_filter and status_filter.lower() != "all":
             query = query.where(PaymentReport.status == status_filter)
         if bank:
             query = query.where(PaymentReport.origin_bank == bank)
         if tenant_id:
             query = query.where(PaymentReport.tenant_id == tenant_id)
+        if limit:
+            query = query.limit(limit)
 
         result = await db.execute(query)
         payments = result.scalars().all()

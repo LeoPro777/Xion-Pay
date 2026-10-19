@@ -31,9 +31,10 @@ async def report_payment(
 
 @router.get("/inbox", response_model=List[PaymentReportResponse])
 async def list_inbox_payments(
-    status: Optional[str] = Query("pending", description="pending, approved, rejected"),
+    status: Optional[str] = Query("pending", description="pending, approved, rejected, all"),
     bank: Optional[str] = Query(None, description="Filtro por banco de origen"),
     tenant_id: Optional[uuid.UUID] = Query(None, description="Filtro por comercio"),
+    limit: Optional[int] = Query(None, description="Límite máximo de resultados"),
     db: AsyncSession = Depends(get_db),
     _: AdminUser = Depends(get_current_admin),
 ):
@@ -41,7 +42,7 @@ async def list_inbox_payments(
     Reconciliation Inbox endpoint for administrators.
     Provides split-view data with attached proofs and fiscal details.
     """
-    return await PaymentService.list_inbox(db, status_filter=status, bank=bank, tenant_id=tenant_id)
+    return await PaymentService.list_inbox(db, status_filter=status, bank=bank, tenant_id=tenant_id, limit=limit)
 
 
 @router.post("/{payment_id}/approve", response_model=PaymentApproveResult)

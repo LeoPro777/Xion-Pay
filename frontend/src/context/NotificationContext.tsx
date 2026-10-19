@@ -14,6 +14,7 @@ interface NotificationContextType {
   unreadCount: number;
   clearNotifications: () => void;
   lastEventTimestamp: number;
+  addNotification: (item: { type: string; message: string; data?: any }) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -23,6 +24,19 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [lastEventTimestamp, setLastEventTimestamp] = useState<number>(Date.now());
+
+  const addNotification = (item: { type: string; message: string; data?: any }) => {
+    const newItem: NotificationItem = {
+      id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: item.type,
+      message: item.message,
+      timestamp: new Date().toLocaleTimeString(),
+      data: item.data,
+    };
+    setNotifications((prev) => [newItem, ...prev]);
+    setUnreadCount((c) => c + 1);
+    setLastEventTimestamp(Date.now());
+  };
 
   useEffect(() => {
     if (!token) return;
@@ -67,7 +81,18 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               };
               setNotifications((prev) => [item, ...prev]);
               setLastEventTimestamp(Date.now());
-            } else if (data.type === 'PAYMENT_APPROVED' || data.type === 'PAYMENT_REJECTED') {
+            } else if (data.type === 'WEBHOOK_DISPATCHED') {
+              const item: NotificationItem = {
+                id: `wh-${Date.now()}`,
+                type: 'WEBHOOK_DISPATCHED',
+                message: `Webhook despachado: ${data.event_type || 'evento'} hacia ${data.tenant_name || 'comercio'}`,
+                timestamp: new Date().toLocaleTimeString(),
+                data: data,
+              };
+              setNotifications((prev) => [item, ...prev]);
+              setUnreadCount((c) => c + 1);
+              setLastEventTimestamp(Date.now());
+            } else if (data.type === 'PAYMENT_APPROVED' || data.type === 'PAYMENT_REJECTED' || data.type === 'TOLERANCE_EXTENDED') {
               setLastEventTimestamp(Date.now());
             }
           } catch (e) {
@@ -102,7 +127,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, clearNotifications, lastEventTimestamp }}
+      value={{ notifications, unreadCount, clearNotifications, lastEventTimestamp, addNotification }}
     >
       {children}
     </NotificationContext.Provider>

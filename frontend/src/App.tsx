@@ -63,6 +63,7 @@ const MainLayout: React.FC = () => {
         currentRate={currentRate}
         onOpenSettings={() => setCurrentTab('settings')}
         onOpenPreferences={() => setIsPreferencesOpen(true)}
+        onNavigateTab={(tab) => setCurrentTab(tab)}
       />
 
       <div className="flex flex-1">
@@ -72,6 +73,7 @@ const MainLayout: React.FC = () => {
           {currentTab === 'dashboard' && (
             <DashboardPage
               onNavigateToReconciliation={() => setCurrentTab('reconciliation')}
+              onNavigateToTenants={() => setCurrentTab('tenants')}
               lastEventTimestamp={rateUpdatedTrigger || lastEventTimestamp}
             />
           )}

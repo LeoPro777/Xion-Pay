@@ -31,6 +31,23 @@ async def get_tenant_webhook_logs(
     return [WebhookLogResponse.model_validate(l) for l in logs]
 
 
+@router.get("/recent", response_model=List[WebhookLogResponse])
+async def get_recent_webhook_logs(
+    limit: int = 15,
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Fetch global recent outgoing webhook dispatch audit logs across all tenants."""
+    query = (
+        select(WebhookLog)
+        .order_by(WebhookLog.dispatched_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    logs = result.scalars().all()
+    return [WebhookLogResponse.model_validate(l) for l in logs]
+
+
 @router.post("/test/{tenant_id}", response_model=WebhookLogResponse)
 async def send_test_webhook(
     tenant_id: uuid.UUID,

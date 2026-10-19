@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { api } from '../services/api';
+import type { SystemSettings } from '../types';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 export type ThemeAccent =
@@ -13,6 +15,7 @@ export type ThemeAccent =
   | 'orange'
   | 'titanium';
 export type FontSize = 'sm' | 'md' | 'lg';
+export type CurrencyMode = 'USD' | 'VES';
 
 interface PreferencesState {
   mode: ThemeMode;
@@ -20,6 +23,9 @@ interface PreferencesState {
   fontSize: FontSize;
   highContrast: boolean;
   resolvedMode: 'light' | 'dark';
+  currency: CurrencyMode;
+  bcvRate: number;
+  bcvUpdatedAt: string | null;
 }
 
 interface PreferencesContextType extends PreferencesState {
@@ -27,8 +33,11 @@ interface PreferencesContextType extends PreferencesState {
   setAccent: (accent: ThemeAccent) => void;
   setFontSize: (fontSize: FontSize) => void;
   setHighContrast: (highContrast: boolean) => void;
+  setCurrency: (currency: CurrencyMode) => void;
   toggleMode: () => void;
   resetDefaults: () => void;
+  refreshBcvRate: () => Promise<void>;
+  updateBcvRate: (newRate: number) => Promise<void>;
 }
 
 const STORAGE_KEY = 'xion_pay_preferences';
@@ -39,6 +48,9 @@ const defaultPreferences: PreferencesState = {
   fontSize: 'md',
   highContrast: false,
   resolvedMode: 'light',
+  currency: 'USD',
+  bcvRate: 36.50,
+  bcvUpdatedAt: null,
 };
 
 const PreferencesContext = createContext<PreferencesContextType | undefined>(undefined);
@@ -55,6 +67,9 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
           fontSize: parsed.fontSize || 'md',
           highContrast: Boolean(parsed.highContrast),
           resolvedMode: parsed.mode === 'dark' ? 'dark' : 'light',
+          currency: (parsed.currency === 'VES' ? 'VES' : 'USD') as CurrencyMode,
+          bcvRate: typeof parsed.bcvRate === 'number' ? parsed.bcvRate : 36.50,
+          bcvUpdatedAt: parsed.bcvUpdatedAt || null,
         };
       }
     } catch {
@@ -106,9 +121,40 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
         accent: preferences.accent,
         fontSize: preferences.fontSize,
         highContrast: preferences.highContrast,
+        currency: preferences.currency,
+        bcvRate: preferences.bcvRate,
+        bcvUpdatedAt: preferences.bcvUpdatedAt,
       })
     );
-  }, [preferences.mode, preferences.accent, preferences.fontSize, preferences.highContrast]);
+  }, [
+    preferences.mode,
+    preferences.accent,
+    preferences.fontSize,
+    preferences.highContrast,
+    preferences.currency,
+    preferences.bcvRate,
+    preferences.bcvUpdatedAt,
+  ]);
+
+  // Initial and periodic fetch of BCV rate from settings API
+  const refreshBcvRate = useCallback(async () => {
+    try {
+      const res = await api.get<SystemSettings>('/settings');
+      if (res.data && typeof res.data.usd_ves_rate === 'number') {
+        setPreferences((prev) => ({
+          ...prev,
+          bcvRate: res.data.usd_ves_rate,
+          bcvUpdatedAt: res.data.updated_at || new Date().toISOString(),
+        }));
+      }
+    } catch (e) {
+      console.warn('Could not refresh BCV rate from API:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    refreshBcvRate();
+  }, [refreshBcvRate]);
 
   // Listen to system theme changes if in 'system' mode
   useEffect(() => {
@@ -142,6 +188,19 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
     setPreferences((prev) => ({ ...prev, highContrast }));
   };
 
+  const setCurrency = (currency: CurrencyMode) => {
+    setPreferences((prev) => ({ ...prev, currency }));
+  };
+
+  const updateBcvRate = async (newRate: number) => {
+    const res = await api.put<SystemSettings>('/settings/exchange-rate', { usd_ves_rate: newRate });
+    setPreferences((prev) => ({
+      ...prev,
+      bcvRate: res.data.usd_ves_rate,
+      bcvUpdatedAt: res.data.updated_at || new Date().toISOString(),
+    }));
+  };
+
   const toggleMode = () => {
     const nextMode = preferences.resolvedMode === 'dark' ? 'light' : 'dark';
     setMode(nextMode);
@@ -159,8 +218,11 @@ export const PreferencesProvider: React.FC<{ children: React.ReactNode }> = ({ c
         setAccent,
         setFontSize,
         setHighContrast,
+        setCurrency,
         toggleMode,
         resetDefaults,
+        refreshBcvRate,
+        updateBcvRate,
       }}
     >
       {children}

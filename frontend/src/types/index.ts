@@ -34,6 +34,30 @@ export interface TenantCounts {
   frozen: number;
 }
 
+export interface CryptoHealthInfo {
+  public_key_loaded: boolean;
+  public_key_fingerprint: string;
+  algorithm: string;
+  active_licenses_count: number;
+  expiring_soon_count: number;
+  in_grace_period_count: number;
+}
+
+export interface RevenueByPlanItem {
+  plan_name: string;
+  plan_code: string;
+  count: number;
+  revenue_usd: number;
+  percentage: number;
+}
+
+export interface RevenueByMethodItem {
+  method: string;
+  count: number;
+  amount_usd: number;
+  percentage: number;
+}
+
 export interface DashboardMetrics {
   mrr_usd: number;
   mrr_ves: number;
@@ -49,6 +73,9 @@ export interface DashboardMetrics {
     retention: number;
     churn: number;
   }>;
+  crypto_health?: CryptoHealthInfo;
+  revenue_by_plan?: RevenueByPlanItem[];
+  revenue_by_method?: RevenueByMethodItem[];
 }
 
 export interface Plan {
