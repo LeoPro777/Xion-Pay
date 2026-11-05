@@ -23,25 +23,7 @@ async def get_plans_catalog(
     plans = await PlanService.list_plans(db, active_only=True)
     settings_data = await SettingsService.get_settings(db)
     rate = settings_data.usd_ves_rate
-
-    payment_methods = {
-        "pago_movil": {
-            "banco": "0102 - Banco de Venezuela",
-            "telefono": "+584141234567",
-            "documento_identidad": "J-50123456-7",
-            "titular": "Xion Technologies C.A.",
-        },
-        "transferencia_ves": {
-            "banco": "0134 - Banesco Banco Universal",
-            "numero_cuenta": "0134-1092-23-0001234567",
-            "documento_identidad": "J-50123456-7",
-            "titular": "Xion Technologies C.A.",
-        },
-        "zelle": {
-            "correo": "pagos@xionpay.com",
-            "titular": "Xion Global LLC",
-        },
-    }
+    payment_methods = await SettingsService.get_payment_methods_for_catalog(db)
 
     catalog = []
     for p in plans:

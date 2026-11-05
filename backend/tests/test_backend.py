@@ -993,3 +993,90 @@ async def test_multicurrency_payment_and_wallet_credit_on_approval(client: Async
     assert t_data["wallet_balance"] == 55.00
 
 
+@pytest.mark.asyncio
+async def test_payment_methods_crud_and_catalog_reflection(client: AsyncClient, test_db: AsyncSession):
+    """Verify administrator can list, create, update, toggle and delete payment methods, reflecting in catalog."""
+    from sqlalchemy import select
+    from src.modules.auth.models import AdminUser
+    from src.core.security import create_access_token
+
+    # 1. Admin auth
+    res_admin = await test_db.execute(select(AdminUser).where(AdminUser.email == "admin@xionpay.internal"))
+    admin = res_admin.scalar_one_or_none()
+    if not admin:
+        admin = AdminUser(
+            email="admin@xionpay.internal",
+            full_name="Admin Test",
+            google_sub="sub-admin-pm",
+            role="superadmin",
+            is_active=True,
+        )
+        test_db.add(admin)
+        await test_db.commit()
+        await test_db.refresh(admin)
+
+    token = create_access_token({"sub": admin.email, "role": admin.role, "id": str(admin.id)})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # 2. List default payment methods
+    res = await client.get("/api/v1/settings/payment-methods", headers=headers)
+    assert res.status_code == 200
+    methods = res.json()
+    assert len(methods) >= 3
+
+    # 3. Create new payment method (e.g., Binance Pay)
+    new_method_payload = {
+        "name": "Binance Pay USDT",
+        "type": "binance",
+        "currency": "USD",
+        "details": {
+            "pay_id": "987654321",
+            "red": "USDT (TRC-20)",
+            "correo": "binance@xionpay.com",
+        },
+        "instructions": "Enviar captura con el ID de transacción.",
+        "is_active": True,
+    }
+    create_res = await client.post("/api/v1/settings/payment-methods", json=new_method_payload, headers=headers)
+    assert create_res.status_code == 201
+    created = create_res.json()
+    method_id = created["id"]
+    assert created["name"] == "Binance Pay USDT"
+    assert created["details"]["pay_id"] == "987654321"
+
+    # 4. Verify catalog reflects the new payment method
+    catalog_res = await client.get("/api/v1/plans/catalog")
+    assert catalog_res.status_code == 200
+    catalog_data = catalog_res.json()
+    assert "binance" in catalog_data["payment_methods"]
+    assert catalog_data["payment_methods"]["binance"]["pay_id"] == "987654321"
+
+    # 5. Update payment method
+    update_res = await client.put(
+        f"/api/v1/settings/payment-methods/{method_id}",
+        json={"name": "Binance Pay USDT Oficial", "instructions": "Solo USDT red TRC20"},
+        headers=headers,
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert updated["name"] == "Binance Pay USDT Oficial"
+    assert updated["instructions"] == "Solo USDT red TRC20"
+
+    # 6. Toggle status
+    toggle_res = await client.patch(f"/api/v1/settings/payment-methods/{method_id}/toggle", headers=headers)
+    assert toggle_res.status_code == 200
+    assert toggle_res.json()["is_active"] is False
+
+    # Check catalog does not include inactive method
+    catalog_res2 = await client.get("/api/v1/plans/catalog")
+    assert "binance" not in catalog_res2.json()["payment_methods"]
+
+    # 7. Delete method
+    del_res = await client.delete(f"/api/v1/settings/payment-methods/{method_id}", headers=headers)
+    assert del_res.status_code == 200
+
+    # Verify not found after delete
+    get_del = await client.put(f"/api/v1/settings/payment-methods/{method_id}", json={"name": "test"}, headers=headers)
+    assert get_del.status_code == 404
+
+

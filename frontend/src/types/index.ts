@@ -245,6 +245,18 @@ export interface SystemSettings {
   updated_at?: string;
 }
 
+export interface PaymentMethod {
+  id: string;
+  name: string;
+  type: string;
+  currency: string;
+  details: Record<string, string>;
+  instructions?: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 declare global {
   interface Window {
     google?: {
