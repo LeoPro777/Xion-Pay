@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 from src.modules.plans.schemas import PlanResponse
 
 
@@ -199,21 +199,53 @@ class ComprobanteResponse(BaseModel):
 # ==============================================================================
 
 class XionManagerLeadCreate(BaseModel):
-    nombre_contacto: str = Field(..., min_length=2, max_length=150, description="Nombre de la persona o contacto")
+    nombre_contacto: Optional[str] = Field(None, min_length=2, max_length=150, description="Nombre de la persona o contacto")
     nombre_comercial: str = Field(..., min_length=2, max_length=200, description="Nombre comercial del comercio")
     email: EmailStr = Field(..., description="Correo de suscripción y login")
     telefono_contacto: str = Field(..., min_length=7, max_length=50, description="Teléfono/WhatsApp para avisos")
     documento_identidad_tipo: Optional[str] = Field(default="V", description="'V', 'E', 'J', 'G'")
     documento_identidad_numero: Optional[str] = Field(default=None, max_length=50, description="Cédula o RIF informal")
-    webhook_url: Optional[str] = None
+    plan_code: Optional[str] = Field(default=None, description="Código del plan a suscribir (ej. starter, pro). Si se omite, usa el plan trial por defecto.")
+    trial_days: Optional[int] = Field(default=30, ge=1, le=365, description="Días de prueba gratuita otorgados (30 por defecto)")
+    webhook_url: Optional[str] = Field(default=None, description="URL en Xion-Manager para recibir eventos de renovación de licencias")
     source: Optional[str] = Field(default="xion-manager", description="Origen del formulario")
     notes: Optional[str] = Field(default=None, description="Notas operativas del lead")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_incoming_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            # Normalizar nombres de campos si el agente los envía en inglés o formato alternativo
+            if "commercial_name" in data and "nombre_comercial" not in data:
+                data["nombre_comercial"] = data["commercial_name"]
+            if "contact_name" in data and "nombre_contacto" not in data:
+                data["nombre_contacto"] = data["contact_name"]
+            if "owner_email" in data and "email" not in data:
+                data["email"] = data["owner_email"]
+            if "phone" in data and "telefono_contacto" not in data:
+                data["telefono_contacto"] = data["phone"]
+            elif "owner_phone" in data and "telefono_contacto" not in data:
+                data["telefono_contacto"] = data["owner_phone"]
+            if "id_doc_type" in data and "documento_identidad_tipo" not in data:
+                data["documento_identidad_tipo"] = data["id_doc_type"]
+            if "id_doc_number" in data and "documento_identidad_numero" not in data:
+                data["documento_identidad_numero"] = data["id_doc_number"]
+            elif "tax_id" in data and "documento_identidad_numero" not in data:
+                data["documento_identidad_numero"] = data["tax_id"]
+            elif "rif" in data and "documento_identidad_numero" not in data:
+                data["documento_identidad_numero"] = data["rif"]
+        return data
+
+
+# Alias semánticos para claridad de integración
+XionManagerClientRegisterRequest = XionManagerLeadCreate
 
 
 class XionManagerLeadResponse(BaseModel):
     client_id: uuid.UUID
     commercial_name: str
     contact_name: Optional[str] = None
+    tax_id: str
     email: str
     phone: str
     status: str
@@ -221,7 +253,12 @@ class XionManagerLeadResponse(BaseModel):
     trial_ends_at: datetime
     trial_days_remaining: int
     license_token: str
+    webhook_secret: Optional[str] = None
+    webhook_url: Optional[str] = None
     message: str
+
+
+XionManagerClientRegisterResponse = XionManagerLeadResponse
 
 
 # ==============================================================================

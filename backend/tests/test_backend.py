@@ -651,6 +651,28 @@ async def test_auth_config_endpoint(client: AsyncClient):
     assert "google_client_id" in data
 
 
+@pytest.mark.asyncio
+async def test_auth_rejection_no_whitelist_leakage(client: AsyncClient, monkeypatch):
+    """Verify that unauthorized login does not leak whitelist presence and returns generic 'Acceso denegado.'."""
+    from src.modules.auth import service
+    monkeypatch.setattr(service, "verify_google_id_token", lambda token: {"email": "unauthorized@unknown.com", "sub": "sub-123"})
+    res = await client.post("/api/v1/auth/google-login", json={"id_token": "mock-token"})
+    assert res.status_code == 401
+    assert res.json().get("message") == "Acceso denegado."
+    assert "blanca" not in res.json().get("message", "").lower()
+    assert "whitelist" not in res.json().get("message", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_dev_login_blocked_in_production(client: AsyncClient, monkeypatch):
+    """Verify that dev-login is strictly blocked in production without disclosing whitelist info."""
+    from src.core.config import settings
+    monkeypatch.setattr(settings, "ENVIRONMENT", "production")
+    res = await client.post("/api/v1/auth/dev-login", json={"email": "admin@xionpay.internal"})
+    assert res.status_code == 403
+    assert res.json().get("detail") == "Acceso denegado."
+
+
 def test_database_url_supabase_normalization():
     """Verify that postgresql and supabase pooler URLs with sslmode are properly normalized."""
     from src.core.config import Settings

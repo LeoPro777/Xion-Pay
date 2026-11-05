@@ -51,6 +51,10 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = Field(default="mock-google-client-id-for-dev.apps.googleusercontent.com")
     INITIAL_ADMIN_EMAIL: str = Field(default="", description="Email a aprovisionar automáticamente como superadmin inicial")
+    XION_MANAGER_API_KEY: str = Field(
+        default="xion_mgr_sec_dev_2026",
+        description="Clave secreta de autenticación de servicio para recibir registros desde Xion-Manager",
+    )
 
     ALLOWED_ORIGINS: Union[List[str], str] = Field(
         default=["http://localhost:5173", "http://127.0.0.1:5173", "https://admin.xionpay.com"]

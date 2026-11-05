@@ -3,6 +3,8 @@ set -e
 
 PORT="${PORT:-10000}"
 export PORT
+ENVIRONMENT="${ENVIRONMENT:-production}"
+export ENVIRONMENT
 
 echo "========================================================"
 echo " Starting Xion-Pay Container (Render Deployment)"

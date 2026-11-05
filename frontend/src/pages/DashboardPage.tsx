@@ -419,9 +419,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* MRR Card */}
-        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-xs hover:shadow-md transition-shadow">
+        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wide">
               MRR Normalizado
             </span>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
@@ -445,9 +445,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         {/* Comercios Activos */}
-        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-xs hover:shadow-md transition-shadow">
+        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wide">
               Comercios Activos
             </span>
             <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800 flex items-center justify-center text-blue-600 dark:text-blue-400">
@@ -471,9 +471,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         </div>
 
         {/* Tasa de Retención */}
-        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-xs hover:shadow-md transition-shadow">
+        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 rounded-2xl p-5 relative overflow-hidden shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400 uppercase tracking-wide">
               Tasa de Retención
             </span>
             <div className="w-8 h-8 rounded-xl bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-800 flex items-center justify-center text-purple-600 dark:text-purple-400">
@@ -490,7 +490,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
         {/* Pagos Pendientes Auditoria */}
         <div
-          className={`rounded-2xl p-5 relative overflow-hidden transition-all duration-200 shadow-xs hover:shadow-md ${
+          className={`rounded-2xl p-5 relative overflow-hidden transition-all duration-200 shadow-[0_1px_3px_rgba(0,0,0,0.05)] hover:shadow-md ${
             hasPendingPayments
               ? 'bg-amber-50/30 dark:bg-amber-950/20 border border-amber-300 dark:border-amber-800/80'
               : 'bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800'
@@ -498,7 +498,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
         >
           <div className="flex items-center justify-between">
             <span
-              className={`text-xs font-bold uppercase tracking-wider ${
+              className={`text-xs font-semibold uppercase tracking-wide ${
                 hasPendingPayments
                   ? 'text-amber-800 dark:text-amber-300'
                   : 'text-slate-500 dark:text-zinc-400'
@@ -545,42 +545,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
       {/* Cryptographic Licensing Authority & Health Card */}
       {cryptoHealth && (
-        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-500/30 rounded-2xl p-5 text-white shadow-md relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-
+        <div className="bg-white dark:bg-[#121215] border border-slate-200/80 dark:border-zinc-800 border-l-4 border-l-indigo-600 rounded-2xl p-5 text-slate-900 dark:text-white shadow-sm relative overflow-hidden">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
             <div className="space-y-1.5 max-w-xl">
               <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-indigo-500/20 border border-indigo-400/30 text-indigo-300">
+                <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400">
                   <Key className="w-4 h-4" />
                 </span>
-                <h3 className="text-sm font-bold tracking-tight text-white m-0">
+                <h3 className="text-sm font-bold tracking-tight text-slate-900 dark:text-white m-0">
                   Autoridad Certificadora & Salud Criptográfica
                 </h3>
                 <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold font-mono uppercase tracking-wider ${
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold font-mono uppercase tracking-wider ${
                     cryptoHealth.public_key_loaded
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
+                      : 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
                   }`}
                 >
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${
-                      cryptoHealth.public_key_loaded ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
+                      cryptoHealth.public_key_loaded ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'
                     }`}
                   />
                   {cryptoHealth.public_key_loaded ? 'RSA-2048 ACTIVA' : 'LLAVE NO DISPONIBLE'}
                 </span>
               </div>
-              <p className="text-xs text-indigo-200/80 leading-relaxed font-sans">
+              <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed font-sans">
                 Emisión criptográfica asimétrica para validación offline en terminales POS. Huella de llave pública:
               </p>
-              <div className="flex items-center gap-2 text-[11px] font-mono bg-black/30 border border-white/10 rounded-lg px-2.5 py-1 text-indigo-300 w-fit">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+              <div className="flex items-center gap-2 text-[11px] font-mono bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 rounded-lg px-2.5 py-1 text-slate-700 dark:text-zinc-300 w-fit">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span className="truncate max-w-[280px] sm:max-w-md">{cryptoHealth.public_key_fingerprint}</span>
                 <button
                   onClick={() => handleCopyRef(cryptoHealth.public_key_fingerprint)}
-                  className="hover:text-white transition-colors cursor-pointer text-indigo-400"
+                  className="hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer text-slate-400 dark:text-zinc-500"
                   title="Copiar huella SHA-256"
                 >
                   <Copy className="w-3 h-3" />
@@ -590,23 +588,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
 
             {/* Quick Metrics Badges & Action Buttons */}
             <div className="flex flex-wrap items-center gap-2.5">
-              <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs text-center min-w-[90px]">
-                <div className="text-[10px] text-indigo-200 uppercase font-semibold">Licencias Activas</div>
-                <div className="text-base font-extrabold font-mono text-emerald-400 mt-0.5">
+              <div className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-center min-w-[90px]">
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-medium">Licencias Activas</div>
+                <div className="text-base font-extrabold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                   {cryptoHealth.active_licenses_count}
                 </div>
               </div>
 
-              <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs text-center min-w-[90px]">
-                <div className="text-[10px] text-amber-200 uppercase font-semibold">En Tolerancia</div>
-                <div className="text-base font-extrabold font-mono text-amber-400 mt-0.5">
+              <div className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-center min-w-[90px]">
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-medium">En Tolerancia</div>
+                <div className="text-base font-extrabold font-mono text-amber-600 dark:text-amber-400 mt-0.5">
                   {cryptoHealth.in_grace_period_count}
                 </div>
               </div>
 
-              <div className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-xs text-center min-w-[90px]">
-                <div className="text-[10px] text-rose-200 uppercase font-semibold">Por Expirar &lt;7d</div>
-                <div className="text-base font-extrabold font-mono text-rose-400 mt-0.5">
+              <div className="px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-zinc-900/50 border border-slate-200/80 dark:border-zinc-800 text-center min-w-[90px]">
+                <div className="text-[10px] text-slate-500 dark:text-zinc-400 uppercase font-medium">Por Expirar &lt;7d</div>
+                <div className="text-base font-extrabold font-mono text-rose-600 dark:text-rose-400 mt-0.5">
                   {cryptoHealth.expiring_soon_count}
                 </div>
               </div>
@@ -614,7 +612,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
               <div className="flex flex-col gap-1.5 w-full sm:w-auto">
                 <button
                   onClick={handleAuditCryptoKey}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
                 >
                   <Key className="w-3.5 h-3.5" />
                   <span>Auditar Llave PEM</span>
@@ -622,7 +620,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({
                 {onNavigateToTenants && (
                   <button
                     onClick={onNavigateToTenants}
-                    className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-indigo-100 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-800 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Ver Inquilinos</span>

@@ -1,29 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
-import { ShieldCheck, Lock, ArrowRight, ShieldAlert, Zap } from 'lucide-react';
+import { ShieldCheck, ShieldAlert, Zap } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const { devLogin, loginWithGoogle } = useAuth();
-  const [devEmail, setDevEmail] = useState<string>('admin@xionpay.internal');
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [googleClientId, setGoogleClientId] = useState<string>('');
-  const [isDevMode, setIsDevMode] = useState<boolean>(import.meta.env.DEV);
+  const [isDevMode, setIsDevMode] = useState<boolean>(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
-  // Auto-bypass en desarrollo si no hubo cierre de sesión manual
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const manualLogout = sessionStorage.getItem('xion_manual_logout') === 'true';
-    const forceBypass = params.get('bypass') === 'true';
-
-    if (forceBypass || (import.meta.env.DEV && !manualLogout)) {
-      executeBypass('admin@xionpay.internal');
-    }
-  }, []);
-
-  // Fetch Google Client ID and environment config from backend or Vite environment
+  // Fetch Google Client ID and environment config from backend
   useEffect(() => {
     const loadAuthConfig = async () => {
       try {
@@ -35,15 +23,33 @@ export const LoginPage: React.FC = () => {
         if (res.data?.google_client_id && !envClientId) {
           setGoogleClientId(res.data.google_client_id);
         }
-        if (res.data?.is_dev !== undefined) {
-          setIsDevMode(res.data.is_dev);
-        }
+        // ONLY activate dev bypass mode if backend is in dev, Vite is in DEV mode, and running on localhost
+        const isLocalhost = Boolean(
+          window.location.hostname === 'localhost' ||
+          window.location.hostname === '127.0.0.1' ||
+          window.location.hostname === '[::1]'
+        );
+        const devActive = Boolean(res.data?.is_dev) && Boolean(import.meta.env.DEV) && isLocalhost;
+        setIsDevMode(devActive);
       } catch (e) {
         console.warn('Could not fetch auth config:', e);
+        setIsDevMode(false);
       }
     };
     loadAuthConfig();
   }, []);
+
+  // Optional bypass ONLY in local development when explicitly requested via URL (?bypass=true)
+  useEffect(() => {
+    if (!isDevMode) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const forceBypass = params.get('bypass') === 'true';
+
+    if (forceBypass) {
+      executeBypass('admin@xionpay.internal');
+    }
+  }, [isDevMode]);
 
   // Initialize Google Identity Services (GIS)
   useEffect(() => {
@@ -87,31 +93,24 @@ export const LoginPage: React.FC = () => {
     setError(null);
     try {
       await loginWithGoogle(response.credential);
-    } catch (err: any) {
-      setError(
-        err.response?.data?.message ||
-          'Acceso denegado: este correo de Google no figura en la lista blanca de administradores.'
-      );
+    } catch {
+      setError('Acceso denegado.');
     } finally {
       setLoading(false);
     }
   };
 
-  const executeBypass = async (emailToUse: string) => {
+  const executeBypass = async (emailToUse: string = 'admin@xionpay.internal') => {
+    if (!isDevMode) return;
     setLoading(true);
     setError(null);
     try {
       await devLogin(emailToUse);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Error autenticando con lista blanca.');
+    } catch {
+      setError('Acceso denegado.');
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDevLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    executeBypass(devEmail);
   };
 
   const isMockClient = !googleClientId || googleClientId.includes('mock-google-client-id');
@@ -146,16 +145,16 @@ export const LoginPage: React.FC = () => {
           {/* Official Google Identity Button container */}
           <div
             ref={googleBtnRef}
-            className={`min-h-[44px] flex items-center justify-center ${isMockClient ? 'hidden' : ''}`}
+            className={`min-h-[44px] flex items-center justify-center ${isMockClient && isDevMode ? 'hidden' : ''}`}
           />
 
-          {/* Fallback button when in mock/dev or GIS not initialized */}
-          {isMockClient && (
+          {/* Fallback button strictly in mock development mode */}
+          {isDevMode && isMockClient && (
             <button
               type="button"
               onClick={() => {
-                loginWithGoogle(`dev-mock-${devEmail}`).catch((err: any) => {
-                  setError(err.response?.data?.message || 'Error simulando inicio con Google.');
+                loginWithGoogle('dev-mock-admin@xionpay.internal').catch(() => {
+                  setError('Acceso denegado.');
                 });
               }}
               disabled={loading}
@@ -183,72 +182,34 @@ export const LoginPage: React.FC = () => {
             </button>
           )}
 
-          {isMockClient && (
+          {isDevMode && isMockClient && (
             <p className="text-[10px] text-slate-400 italic text-center">
               * Para habilitar el popup real de Google, define GOOGLE_CLIENT_ID en .env
             </p>
           )}
         </div>
 
+        {/* Development Bypass Section - Completely removed in Production / Docker */}
         {isDevMode && (
-          <>
-            <div className="relative flex py-1 items-center">
+          <div className="pt-2">
+            <div className="relative flex py-1 items-center mb-3">
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
               <span className="flex-shrink mx-4 text-[10px] uppercase font-mono text-slate-400 dark:text-zinc-500">
-                o Acceso Rápido / Local
+                Solo Modo Desarrollo Local
               </span>
               <div className="flex-grow border-t border-slate-200 dark:border-zinc-800"></div>
             </div>
 
-            {/* 1-Click Bypass Button */}
-            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 p-4 rounded-2xl space-y-2.5">
-              <div className="flex items-center space-x-2 text-amber-800 dark:text-amber-300">
-                <Zap className="w-4 h-4 text-amber-600 fill-amber-500" />
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  Acceso Directo / Bypass Rápido
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 dark:text-zinc-300">
-                Ingresa al panel administrativo en 1 clic utilizando el perfil maestro{' '}
-                <code className="text-amber-900 dark:text-amber-200 bg-amber-100/80 dark:bg-amber-900/50 px-1 py-0.5 rounded font-mono text-[10px]">admin@xionpay.internal</code>.
-              </p>
-              <button
-                type="button"
-                onClick={() => executeBypass('admin@xionpay.internal')}
-                disabled={loading}
-                className="w-full py-2.5 bg-[#18181b] dark:bg-white hover:bg-black dark:hover:bg-zinc-200 text-white dark:text-black font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <Zap className="w-4 h-4 fill-white dark:fill-black" />
-                <span>{loading ? 'Conectando...' : 'Bypass Login (Entrar como Superadmin)'}</span>
-              </button>
-            </div>
-
-            {/* Custom Whitelisted Dev Form */}
-            <form onSubmit={handleDevLogin} className="space-y-3 pt-1">
-              <div>
-                <label className="text-[11px] font-semibold text-slate-700 dark:text-zinc-300 block mb-1">
-                  Ingresar con otro correo de lista blanca:
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={devEmail}
-                  onChange={(e) => setDevEmail(e.target.value)}
-                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-slate-800 font-mono"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-2.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 font-semibold text-xs rounded-xl flex items-center justify-center space-x-1.5 transition-colors disabled:opacity-50 cursor-pointer border border-slate-200 dark:border-zinc-700"
-              >
-                <Lock className="w-3.5 h-3.5" />
-                <span>{loading ? 'Verificando Sesión...' : 'Ingresar con este correo'}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </form>
-          </>
+            <button
+              type="button"
+              onClick={() => executeBypass('admin@xionpay.internal')}
+              disabled={loading}
+              className="w-full py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-300/60 dark:border-amber-800/60 font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+            >
+              <Zap className="w-4 h-4 fill-amber-500 text-amber-500" />
+              <span>{loading ? 'Conectando...' : 'Bypass Login (Solo Modo Dev)'}</span>
+            </button>
+          </div>
         )}
 
         <div className="text-center pt-2 text-[10px] text-slate-400">

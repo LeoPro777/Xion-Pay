@@ -50,10 +50,11 @@ async def dev_login(
     Development endpoint to easily authenticate with any whitelisted admin email.
     Blocked in production for security.
     """
-    if settings.ENVIRONMENT.lower() == "production":
+    is_dev = settings.ENVIRONMENT.lower() in ("development", "dev", "local")
+    if not is_dev:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Bypass / Login de desarrollo deshabilitado en entorno de producción.",
+            detail="Acceso denegado.",
         )
     return await AuthService.dev_login(db, payload.email)
 

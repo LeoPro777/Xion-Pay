@@ -19,7 +19,8 @@ FROM python:3.11-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/backend \
-    PORT=10000
+    PORT=10000 \
+    ENVIRONMENT=production
 
 WORKDIR /app
 

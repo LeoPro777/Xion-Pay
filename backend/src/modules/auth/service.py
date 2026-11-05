@@ -17,16 +17,13 @@ class AuthService:
         google_sub = id_info.get("sub")
 
         if not email:
-            raise AuthenticationError("Google ID Token no contiene una dirección de correo válida.")
+            raise AuthenticationError("Acceso denegado.")
 
         result = await db.execute(select(AdminUser).where(AdminUser.email == email))
         admin = result.scalar_one_or_none()
 
-        if not admin:
-            raise AuthenticationError("Acceso denegado: este correo no figura en la lista blanca de administradores.")
-
-        if not admin.is_active:
-            raise AuthenticationError("Su cuenta administrativa se encuentra suspendida o inactiva.")
+        if not admin or not admin.is_active:
+            raise AuthenticationError("Acceso denegado.")
 
         # Update google_sub if not yet linked
         if admin.google_sub.startswith("google-sub-placeholder") or not admin.google_sub:
@@ -45,6 +42,10 @@ class AuthService:
     @staticmethod
     async def dev_login(db: AsyncSession, email: str) -> TokenResponse:
         """Allow quick administrative login in development mode, auto-provisioning if missing."""
+        is_dev = settings.ENVIRONMENT.lower() in ("development", "dev", "local")
+        if not is_dev:
+            raise PermissionDeniedError("Dev-login está estrictamente deshabilitado en entornos de producción.")
+
         result = await db.execute(select(AdminUser).where(AdminUser.email == email))
         admin = result.scalar_one_or_none()
 

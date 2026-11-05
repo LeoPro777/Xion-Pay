@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
@@ -65,8 +65,8 @@ def verify_google_id_token(token: str) -> Dict[str, Any]:
         return id_info
     except AuthenticationError:
         raise
-    except Exception as e:
-        raise AuthenticationError(f"Error verificando Google ID Token: {str(e)}")
+    except Exception:
+        raise AuthenticationError("Acceso denegado.")
 
 
 async def get_current_admin(
@@ -87,12 +87,8 @@ async def get_current_admin(
 
     result = await db.execute(select(AdminUser).where(AdminUser.email == email))
     admin = result.scalar_one_or_none()
-
-    if not admin:
-        raise AuthenticationError("El usuario no figura en la lista blanca de administradores.")
-
-    if not admin.is_active:
-        raise AuthenticationError("La cuenta del administrador ha sido desactivada.")
+    if not admin or not admin.is_active:
+        raise AuthenticationError("Acceso denegado.")
 
     return admin
 
@@ -108,3 +104,34 @@ def require_role(*allowed_roles: str):
         return current_user
 
     return role_checker
+
+
+async def verify_xion_manager_service(
+    x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
+    authorization: Optional[str] = Header(None),
+) -> bool:
+    """
+    Valida la autenticación de servicio entre Xion-Manager y Xion-Pay.
+    Acepta encabezado 'X-API-Key: <key>' o 'Authorization: Bearer <key>'.
+    En producción es obligatorio; en desarrollo permite omitirse si no se envía.
+    """
+    configured_key = getattr(settings, "XION_MANAGER_API_KEY", "xion_mgr_sec_dev_2026")
+
+    provided_key = x_api_key
+    if not provided_key and authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0].lower() == "bearer":
+            provided_key = parts[1]
+        else:
+            provided_key = authorization
+
+    if settings.ENVIRONMENT == "production":
+        if not provided_key or provided_key != configured_key:
+            raise AuthenticationError("API Key de servicio Xion-Manager no válida o ausente.")
+        return True
+
+    # En desarrollo/pruebas locales: si la clave fue enviada, validar concordancia
+    if provided_key and provided_key != configured_key:
+        raise AuthenticationError("API Key de servicio Xion-Manager no válida.")
+
+    return True
