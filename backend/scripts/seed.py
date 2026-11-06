@@ -23,39 +23,24 @@ async def seed():
     await init_db()
 
     async with AsyncSessionLocal() as session:
-        # 1. Master Superadmin
-        admin_res = await session.execute(select(AdminUser).where(AdminUser.email == "admin@xionpay.internal"))
+        # 1. Master Superadmin (configured via INITIAL_ADMIN_EMAIL or default)
+        initial_admin_email = (
+            getattr(settings, "INITIAL_ADMIN_EMAIL", "") or os.getenv("INITIAL_ADMIN_EMAIL", "") or "Leodfernandez@gmail.com"
+        ).strip()
+        admin_res = await session.execute(select(AdminUser).where(AdminUser.email == initial_admin_email))
         admin = admin_res.scalar_one_or_none()
         if not admin:
             admin = AdminUser(
-                email="admin@xionpay.internal",
-                full_name="Administrador Principal",
-                google_sub="google-oauth2|109283746519283746519",
+                email=initial_admin_email,
+                full_name="Leonard Fernández",
+                google_sub=f"pending-google-link-{uuid.uuid4()}",
                 role="superadmin",
                 is_active=True,
             )
             session.add(admin)
-            print("[OK] Created master superadmin: admin@xionpay.internal")
+            print(f"[OK] Created initial superadmin: {initial_admin_email}")
         else:
-            print("[INFO] Master superadmin already exists.")
-
-        # 1.1 Custom Initial Superadmin (from environment variable)
-        initial_admin_email = (getattr(settings, "INITIAL_ADMIN_EMAIL", "") or os.getenv("INITIAL_ADMIN_EMAIL", "")).strip()
-        if initial_admin_email and "@" in initial_admin_email and initial_admin_email != "admin@xionpay.internal":
-            custom_admin_res = await session.execute(select(AdminUser).where(AdminUser.email == initial_admin_email))
-            custom_admin = custom_admin_res.scalar_one_or_none()
-            if not custom_admin:
-                custom_admin = AdminUser(
-                    email=initial_admin_email,
-                    full_name="Superadmin Google Inicial",
-                    google_sub=f"pending-google-link-{uuid.uuid4()}",
-                    role="superadmin",
-                    is_active=True,
-                )
-                session.add(custom_admin)
-                print(f"[OK] Created initial superadmin from env: {initial_admin_email}")
-            else:
-                print(f"[INFO] Initial superadmin from env ({initial_admin_email}) already exists.")
+            print(f"[INFO] Initial superadmin ({initial_admin_email}) already exists.")
 
         # 2. Plans
         plans_data = [
@@ -109,76 +94,75 @@ async def seed():
 
         await session.flush()
 
-        # 3. Sample Demo Tenants & Payments (if none exist)
-        tenants_res = await session.execute(select(Tenant))
-        if not tenants_res.scalars().first():
-            now = datetime.now(timezone.utc)
-            t1 = Tenant(
-                commercial_name="Supermercados El Éxito C.A.",
-                tax_id="J-401928374",
-                owner_email="gerencia@elexito.com",
-                owner_phone="+58 414 1234567",
-                webhook_url="https://elexito.xion.internal/webhooks/xion-pay",
-                webhook_secret="sec_elexito_vault_token_99",
-                status="active",
-                courtesy_days_granted=0,
-            )
-            session.add(t1)
-            await session.flush()
+        # 3. Sample Demo Tenants & Payments (Only when --demo flag is provided)
+        if "--demo" in sys.argv:
+            tenants_res = await session.execute(select(Tenant))
+            if not tenants_res.scalars().first():
+                now = datetime.now(timezone.utc)
+                t1 = Tenant(
+                    commercial_name="Supermercados El Éxito C.A.",
+                    tax_id="J-401928374",
+                    owner_email="gerencia@elexito.com",
+                    owner_phone="+58 414 1234567",
+                    webhook_url="https://elexito.xion.internal/webhooks/xion-pay",
+                    webhook_secret="sec_elexito_vault_token_99",
+                    status="active",
+                    courtesy_days_granted=0,
+                )
+                session.add(t1)
+                await session.flush()
 
-            sub1 = Subscription(
-                tenant_id=t1.id,
-                plan_id=plans_by_code["advanced"].id,
-                billing_cycle="monthly",
-                status="active",
-                current_period_start=now - timedelta(days=20),
-                current_period_end=now + timedelta(days=10),
-            )
-            session.add(sub1)
+                sub1 = Subscription(
+                    tenant_id=t1.id,
+                    plan_id=plans_by_code["advanced"].id,
+                    billing_cycle="monthly",
+                    status="active",
+                    current_period_start=now - timedelta(days=20),
+                    current_period_end=now + timedelta(days=10),
+                )
+                session.add(sub1)
 
-            t2 = Tenant(
-                commercial_name="Farmacia La Pastora Express",
-                tax_id="J-502938471",
-                owner_email="administracion@lapastora.com",
-                owner_phone="+58 424 9876543",
-                webhook_url="https://lapastora.xion.internal/webhooks/xion-pay",
-                webhook_secret="sec_pastora_key_88",
-                status="trial",
-                trial_ends_at=now + timedelta(days=5),
-                courtesy_days_granted=0,
-            )
-            session.add(t2)
-            await session.flush()
+                t2 = Tenant(
+                    commercial_name="Farmacia La Pastora Express",
+                    tax_id="J-502938471",
+                    owner_email="administracion@lapastora.com",
+                    owner_phone="+58 424 9876543",
+                    webhook_url="https://lapastora.xion.internal/webhooks/xion-pay",
+                    webhook_secret="sec_pastora_key_88",
+                    status="trial",
+                    trial_ends_at=now + timedelta(days=5),
+                    courtesy_days_granted=0,
+                )
+                session.add(t2)
+                await session.flush()
 
-            sub2 = Subscription(
-                tenant_id=t2.id,
-                plan_id=plans_by_code["basic"].id,
-                billing_cycle="monthly",
-                status="active",
-                current_period_start=now - timedelta(days=5),
-                current_period_end=now + timedelta(days=10),
-            )
-            session.add(sub2)
+                sub2 = Subscription(
+                    tenant_id=t2.id,
+                    plan_id=plans_by_code["basic"].id,
+                    billing_cycle="monthly",
+                    status="active",
+                    current_period_start=now - timedelta(days=5),
+                    current_period_end=now + timedelta(days=10),
+                )
+                session.add(sub2)
 
-            # Sample pending payment for testing reconciliation inbox
-            payment_sample = PaymentReport(
-                tenant_id=t1.id,
-                subscription_id=sub1.id,
-                origin_bank="Banesco",
-                reference_number="98745612",
-                amount=50.00,
-                currency="USD",
-                exchange_rate=36.50,
-                amount_usd=50.00,
-                amount_ves=1825.00,
-                proof_attachment_url="https://placehold.co/800x1000/0f172a/ffffff.png?text=Comprobante+Banesco+98745612",
-                status="pending",
-                metadata_info={"client_ip": "190.202.10.5", "reported_by_user": "gerencia@elexito.com"},
-                reported_at=now - timedelta(minutes=15),
-            )
-            session.add(payment_sample)
-
-            print("[OK] Seeded demo tenants (Supermercados El Exito, Farmacia La Pastora) and sample pending payment.")
+                payment_sample = PaymentReport(
+                    tenant_id=t1.id,
+                    subscription_id=sub1.id,
+                    origin_bank="Banesco",
+                    reference_number="98745612",
+                    amount=50.00,
+                    currency="USD",
+                    exchange_rate=36.50,
+                    amount_usd=50.00,
+                    amount_ves=1825.00,
+                    proof_attachment_url="https://placehold.co/800x1000/0f172a/ffffff.png?text=Comprobante+Banesco+98745612",
+                    status="pending",
+                    metadata_info={"client_ip": "190.202.10.5", "reported_by_user": "gerencia@elexito.com"},
+                    reported_at=now - timedelta(minutes=15),
+                )
+                session.add(payment_sample)
+                print("[OK] Seeded demo tenants (Supermercados El Exito, Farmacia La Pastora) and sample pending payment.")
 
         # 4. Official Exchange Rate (System Settings)
         rate_res = await session.execute(select(SystemSetting).where(SystemSetting.key == "usd_ves_rate"))

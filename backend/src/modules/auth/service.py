@@ -1,6 +1,7 @@
+import os
 import uuid
 from typing import List, Optional
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.config import settings
 from src.core.security import create_access_token, verify_google_id_token
@@ -19,14 +20,15 @@ class AuthService:
         if not email:
             raise AuthenticationError("Acceso denegado.")
 
-        result = await db.execute(select(AdminUser).where(AdminUser.email == email))
+        target_email = email.strip()
+        result = await db.execute(select(AdminUser).where(func.lower(AdminUser.email) == target_email.lower()))
         admin = result.scalar_one_or_none()
 
         if not admin or not admin.is_active:
             raise AuthenticationError("Acceso denegado.")
 
         # Update google_sub if not yet linked
-        if admin.google_sub.startswith("google-sub-placeholder") or not admin.google_sub:
+        if not admin.google_sub or admin.google_sub.startswith("google-sub-placeholder") or admin.google_sub.startswith("pending-google-link"):
             admin.google_sub = google_sub
             await db.commit()
             await db.refresh(admin)
@@ -41,19 +43,22 @@ class AuthService:
 
     @staticmethod
     async def dev_login(db: AsyncSession, email: str) -> TokenResponse:
-        """Allow quick administrative login in development mode, auto-provisioning if missing."""
+        """Allow administrative login in development mode, strictly restricted to whitelisted/configured admins."""
         is_dev = settings.ENVIRONMENT.lower() in ("development", "dev", "local")
         if not is_dev:
             raise PermissionDeniedError("Dev-login está estrictamente deshabilitado en entornos de producción.")
 
-        result = await db.execute(select(AdminUser).where(AdminUser.email == email))
+        target_email = email.strip()
+        result = await db.execute(select(AdminUser).where(func.lower(AdminUser.email) == target_email.lower()))
         admin = result.scalar_one_or_none()
 
-        if not admin:
+        # If user does not exist in DB, only allow auto-provision if it matches INITIAL_ADMIN_EMAIL
+        initial_admin = (getattr(settings, "INITIAL_ADMIN_EMAIL", "") or os.getenv("INITIAL_ADMIN_EMAIL", "")).strip()
+        if not admin and initial_admin and target_email.lower() == initial_admin.lower():
             admin = AdminUser(
-                email=email,
-                full_name="Administrador Principal (Dev)",
-                google_sub=f"google-dev-sub-{email}",
+                email=target_email,
+                full_name="Leonard Fernández",
+                google_sub=f"google-dev-sub-{target_email.lower()}",
                 role="superadmin",
                 is_active=True,
             )
@@ -61,10 +66,8 @@ class AuthService:
             await db.commit()
             await db.refresh(admin)
 
-        if not admin.is_active:
-            admin.is_active = True
-            await db.commit()
-            await db.refresh(admin)
+        if not admin or not admin.is_active:
+            raise AuthenticationError("Acceso denegado.")
 
         access_token = create_access_token(data={"sub": admin.email, "role": admin.role, "id": str(admin.id)})
 

@@ -47,7 +47,7 @@ export const LoginPage: React.FC = () => {
     const forceBypass = params.get('bypass') === 'true';
 
     if (forceBypass) {
-      executeBypass('admin@xionpay.internal');
+      executeBypass('Leodfernandez@gmail.com');
     }
   }, [isDevMode]);
 
@@ -100,7 +100,7 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const executeBypass = async (emailToUse: string = 'admin@xionpay.internal') => {
+  const executeBypass = async (emailToUse: string = 'Leodfernandez@gmail.com') => {
     if (!isDevMode) return;
     setLoading(true);
     setError(null);
@@ -153,7 +153,7 @@ export const LoginPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                loginWithGoogle('dev-mock-admin@xionpay.internal').catch(() => {
+                loginWithGoogle('Leodfernandez@gmail.com').catch(() => {
                   setError('Acceso denegado.');
                 });
               }}
@@ -202,7 +202,7 @@ export const LoginPage: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => executeBypass('admin@xionpay.internal')}
+              onClick={() => executeBypass('Leodfernandez@gmail.com')}
               disabled={loading}
               className="w-full py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-300/60 dark:border-amber-800/60 font-semibold text-xs rounded-xl flex items-center justify-center space-x-2 transition-all shadow-xs cursor-pointer disabled:opacity-50"
             >
