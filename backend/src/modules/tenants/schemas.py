@@ -92,6 +92,11 @@ class TenantUpdate(BaseModel):
         return v
 
 
+class TenantStatusManipulateRequest(BaseModel):
+    status: Optional[str] = Field(None, description="'active', 'frozen', 'suspended' o None para alternar (toggle)")
+    reason: Optional[str] = "Prueba de bloqueo en tiempo real"
+
+
 class TenantBalanceRecharge(BaseModel):
     amount: float = Field(..., gt=0.0, description="Monto en USD a recargar en la billetera")
     reason: Optional[str] = Field("Abono administrativo a favor", description="Motivo de la recarga")

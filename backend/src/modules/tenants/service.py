@@ -1032,40 +1032,159 @@ class TenantService:
         return await TenantService.get_tenant_detail(db, tenant_id)
 
     @staticmethod
-    async def get_tenant_license_status(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
-        """Consulta directa del estado de autorización y licencia activa por parte de Xion-Manager."""
-        query = select(Tenant).where(Tenant.id == tenant_id).options(
+    async def resolve_tenant_by_identifier(db: AsyncSession, identifier: Any) -> Tenant:
+        """Busca un tenant por UUID o por Identificación Fiscal (RIF, ej: J-50123456-7)."""
+        parsed_uuid = None
+        if isinstance(identifier, uuid.UUID):
+            parsed_uuid = identifier
+        elif isinstance(identifier, str):
+            try:
+                parsed_uuid = uuid.UUID(identifier)
+            except ValueError:
+                parsed_uuid = None
+
+        if parsed_uuid:
+            query = select(Tenant).where(Tenant.id == parsed_uuid).options(
+                selectinload(Tenant.subscriptions).selectinload(Subscription.plan),
+                selectinload(Tenant.license_tokens),
+            )
+            res = await db.execute(query)
+            t = res.scalar_one_or_none()
+            if t:
+                return t
+
+        raw_str = str(identifier).strip()
+        clean_tax = raw_str.upper()
+        if clean_tax.startswith("J-J-"):
+            clean_tax = "J-" + clean_tax[4:]
+        elif clean_tax.startswith("V-V-"):
+            clean_tax = "V-" + clean_tax[4:]
+
+        query = select(Tenant).where(
+            or_(
+                Tenant.tax_id == raw_str,
+                Tenant.tax_id == clean_tax,
+                Tenant.tax_id.ilike(f"%{clean_tax}%"),
+                Tenant.commercial_name.ilike(f"%{raw_str}%"),
+            )
+        ).options(
             selectinload(Tenant.subscriptions).selectinload(Subscription.plan),
             selectinload(Tenant.license_tokens),
         )
         res = await db.execute(query)
-        tenant = res.scalar_one_or_none()
+        tenant = res.scalars().first()
         if not tenant:
-            raise ResourceNotFoundError("Comercio cliente no encontrado.")
+            raise ResourceNotFoundError("Tenant", str(identifier))
+        return tenant
+
+    @staticmethod
+    async def get_tenant_license_status(db: AsyncSession, identifier: Any) -> dict:
+        """Consulta directa del estado de autorización y licencia activa por parte de Xion-Manager."""
+        tenant = await TenantService.resolve_tenant_by_identifier(db, identifier)
 
         now = datetime.now(timezone.utc)
         latest_license = sorted(tenant.license_tokens, key=lambda l: l.issued_at, reverse=True)[0] if tenant.license_tokens else None
-
         active_sub = next((s for s in tenant.subscriptions if s.status == "active"), None)
+        if not active_sub and tenant.subscriptions:
+            active_sub = tenant.subscriptions[0]
 
         license_jwt = None
         if latest_license and isinstance(latest_license.payload_snapshot, dict):
             license_jwt = latest_license.payload_snapshot.get("license_jwt")
 
+        is_frozen = tenant.status in ("frozen", "suspended")
+
         return {
             "tenant_id": str(tenant.id),
+            "tax_id": tenant.tax_id,
             "commercial_name": tenant.commercial_name,
             "status": tenant.status,
+            "is_active": not is_frozen,
+            "is_suspended": is_frozen,
+            "suspension_reason": "Servicio suspendido administrativamente" if is_frozen else None,
             "trial_ends_at": tenant.trial_ends_at.isoformat() if tenant.trial_ends_at else None,
             "subscription": {
-                "status": active_sub.status,
-                "plan_code": active_sub.plan.code,
-                "plan_name": active_sub.plan.name,
-                "current_period_end": active_sub.current_period_end.isoformat(),
+                "status": active_sub.status if active_sub else tenant.status,
+                "plan_code": active_sub.plan.code if active_sub and active_sub.plan else "pro",
+                "plan_name": active_sub.plan.name if active_sub and active_sub.plan else "Plan Pro",
+                "current_period_end": active_sub.current_period_end.isoformat() if active_sub and active_sub.current_period_end else None,
             } if active_sub else None,
             "license_token": license_jwt,
             "checked_at": now.isoformat(),
         }
+
+    @staticmethod
+    async def manipulate_tenant_status(
+        db: AsyncSession,
+        identifier: Any,
+        target_status: Optional[str] = None,
+        reason: Optional[str] = None,
+    ) -> dict:
+        """
+        Permite a Xion-Manager manipular o alternar (toggle) el estado del comercio en tiempo real
+        (active <-> frozen) para probar el bloqueo y desbloqueo operativo inmediatamente.
+        """
+        tenant = await TenantService.resolve_tenant_by_identifier(db, identifier)
+        prev_status = tenant.status
+
+        if target_status:
+            new_status = target_status.lower().strip()
+        else:
+            new_status = "active" if tenant.status in ("frozen", "suspended") else "frozen"
+
+        tenant.status = new_status
+        now = datetime.now(timezone.utc)
+
+        # Sincronizar suscripciones asociadas
+        for s in tenant.subscriptions:
+            if new_status in ("frozen", "suspended"):
+                if s.status in ("active", "grace_period", "trial"):
+                    s.status = new_status
+            elif new_status == "active":
+                if s.status in ("frozen", "suspended"):
+                    s.status = "active"
+
+        tenant.updated_at = now
+        await db.commit()
+
+        # Despachar webhook si tiene webhook_url configurado
+        if tenant.webhook_url:
+            event = "account.suspended" if new_status in ("frozen", "suspended") else "account.activated"
+            action = "restrict" if new_status in ("frozen", "suspended") else "activate"
+            license_jwt = None
+            if new_status == "active":
+                lic_q = (
+                    select(LicenseToken)
+                    .where(LicenseToken.tenant_id == tenant.id)
+                    .order_by(LicenseToken.issued_at.desc())
+                    .limit(1)
+                )
+                res_lic = await db.execute(lic_q)
+                latest_lic = res_lic.scalar_one_or_none()
+                if latest_lic and latest_lic.payload_snapshot:
+                    license_jwt = latest_lic.payload_snapshot.get("license_jwt")
+
+            await WebhookDispatcher.dispatch_event(
+                db=db,
+                tenant_id=tenant.id,
+                webhook_url=tenant.webhook_url,
+                webhook_secret=tenant.webhook_secret,
+                event_type=event,
+                data={
+                    "action": action,
+                    "tenant_id": str(tenant.id),
+                    "tax_id": tenant.tax_id,
+                    "commercial_name": tenant.commercial_name,
+                    "previous_status": prev_status,
+                    "status": new_status,
+                    "is_active": new_status == "active",
+                    "license_token": license_jwt,
+                    "reason": reason or "Manipulación de estado en tiempo real para pruebas técnicas",
+                    "timestamp": now.isoformat(),
+                },
+            )
+
+        return await TenantService.get_tenant_license_status(db, tenant.id)
 
     @staticmethod
     async def recharge_balance(

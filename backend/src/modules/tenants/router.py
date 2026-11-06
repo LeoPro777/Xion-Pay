@@ -20,6 +20,7 @@ from src.modules.tenants.schemas import (
     XionManagerLeadResponse,
     TenantBalanceRecharge,
     TenantBalanceResponse,
+    TenantStatusManipulateRequest,
 )
 from src.modules.tenants.service import TenantService
 
@@ -176,17 +177,38 @@ async def list_comprobantes(
     return await TenantService.list_comprobantes(db, tenant_id)
 
 
-@router.get("/{tenant_id}/license-status")
-@clients_router.get("/{tenant_id}/license-status")
+@router.get("/{identifier}/license-status")
+@clients_router.get("/{identifier}/license-status")
 async def get_tenant_license_status(
-    tenant_id: uuid.UUID,
+    identifier: str,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Consulta directa de autorización y token de licencia criptográfico para Xion-Manager.
-    Permite a la instancia cliente validar su estatus y plan activo en cualquier momento.
+    Acepta UUID del tenant o Identificación Fiscal / RIF (ej: J-50123456-7).
     """
-    return await TenantService.get_tenant_license_status(db, tenant_id)
+    return await TenantService.get_tenant_license_status(db, identifier)
+
+
+@router.post("/{identifier}/status")
+@router.patch("/{identifier}/status")
+@clients_router.post("/{identifier}/status")
+@clients_router.patch("/{identifier}/status")
+@router.post("/{identifier}/toggle-status")
+@clients_router.post("/{identifier}/toggle-status")
+async def manipulate_tenant_status(
+    identifier: str,
+    payload: Optional[TenantStatusManipulateRequest] = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Permite manipular o alternar (toggle) el estado del comercio (active <-> frozen)
+    en tiempo real para probar el bloqueo y desbloqueo operativo inmediatamente.
+    Acepta UUID del tenant o Identificación Fiscal / RIF (ej: J-50123456-7).
+    """
+    target_status = payload.status if payload else None
+    reason = payload.reason if payload else None
+    return await TenantService.manipulate_tenant_status(db, identifier, target_status, reason)
 
 
 # ==============================================================================

@@ -729,6 +729,23 @@ async def test_tenant_license_status_endpoint(client: AsyncClient, test_db: Asyn
     assert data["tenant_id"] == str(t_id)
     assert data["status"] == "trial"
 
+    # Query by RIF / tax_id
+    res_rif = await client.get(f"/api/v1/tenants/{tenant.tax_id}/license-status")
+    assert res_rif.status_code == 200
+    assert res_rif.json()["tenant_id"] == str(t_id)
+
+    # Toggle status to frozen
+    res_toggle = await client.post(f"/api/v1/tenants/{tenant.tax_id}/toggle-status")
+    assert res_toggle.status_code == 200
+    assert res_toggle.json()["status"] == "frozen"
+    assert res_toggle.json()["is_suspended"] is True
+
+    # Toggle back to active
+    res_toggle_back = await client.post(f"/api/v1/tenants/{t_id}/toggle-status")
+    assert res_toggle_back.status_code == 200
+    assert res_toggle_back.json()["status"] == "active"
+    assert res_toggle_back.json()["is_suspended"] is False
+
 
 @pytest.mark.asyncio
 async def test_tenant_balance_recharge_and_auto_renew(client: AsyncClient, test_db: AsyncSession):
