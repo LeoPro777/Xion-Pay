@@ -7,6 +7,7 @@ import uuid
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from sqlalchemy import select
+from src.core.config import settings
 from src.core.database import AsyncSessionLocal, init_db
 from src.modules.auth.models import AdminUser
 from src.modules.plans.models import Plan
