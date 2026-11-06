@@ -5,21 +5,19 @@ interface BottomNavProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   pendingCount?: number;
-  onOpenInvoices?: () => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   currentTab,
   setCurrentTab,
   pendingCount = 0,
-  onOpenInvoices,
 }) => {
   const navItems = [
     { id: 'dashboard', label: 'Panel', icon: LayoutDashboard },
     { id: 'reconciliation', label: 'Conciliar', icon: CheckSquare, badge: pendingCount },
     { id: 'tenants', label: 'Clientes', icon: Users },
     { id: 'plans', label: 'Planes', icon: Layers },
-    { id: 'invoices', label: 'Facturas', icon: Receipt, isAction: true },
+    { id: 'invoices', label: 'Facturas', icon: Receipt },
   ];
 
   return (
@@ -29,11 +27,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
         const isActive = currentTab === item.id;
 
         const handleClick = () => {
-          if (item.isAction && onOpenInvoices) {
-            onOpenInvoices();
-          } else {
-            setCurrentTab(item.id);
-          }
+          setCurrentTab(item.id);
         };
 
         return (
@@ -41,11 +35,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             key={item.id}
             type="button"
             onClick={handleClick}
-            className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] relative transition-colors cursor-pointer ${
-              isActive
+            className={`flex flex-col items-center justify-center flex-1 py-1.5 min-h-[48px] relative transition-colors cursor-pointer ${isActive
                 ? 'text-purple-600 dark:text-purple-400 font-bold'
                 : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white font-medium'
-            }`}
+              }`}
           >
             <div className="relative">
               <Icon className="w-5 h-5 mb-0.5" />

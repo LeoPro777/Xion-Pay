@@ -274,9 +274,15 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* FACTURACIÓN INMUTABLE BUTTON */}
-        {onOpenInvoices && (
+        {(onNavigateTab || onOpenInvoices) && (
           <button
-            onClick={onOpenInvoices}
+            onClick={() => {
+              if (onNavigateTab) {
+                onNavigateTab('invoices');
+              } else if (onOpenInvoices) {
+                onOpenInvoices();
+              }
+            }}
             className="hidden sm:inline-flex items-center h-8 px-2.5 sm:px-3 rounded-xl border border-slate-200 dark:border-zinc-700/80 bg-slate-50 dark:bg-zinc-850 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:border-purple-200 dark:hover:border-purple-800 text-slate-700 dark:text-zinc-300 hover:text-purple-700 dark:hover:text-purple-300 text-xs font-medium transition-all cursor-pointer shadow-xs gap-1.5"
             title="Gestión de Facturas y Comprobantes Inmutables"
           >
@@ -441,12 +447,16 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
 
                 {/* Option 0: Facturación & Comprobantes */}
-                {onOpenInvoices && (
+                {(onNavigateTab || onOpenInvoices) && (
                   <button
                     type="button"
                     onClick={() => {
                       setShowSettingsDropdown(false);
-                      onOpenInvoices();
+                      if (onNavigateTab) {
+                        onNavigateTab('invoices');
+                      } else if (onOpenInvoices) {
+                        onOpenInvoices();
+                      }
                     }}
                     className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-700 dark:hover:text-purple-300 transition-colors cursor-pointer text-left"
                   >

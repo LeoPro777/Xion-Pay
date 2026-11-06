@@ -9,11 +9,11 @@ import { Sidebar } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
 import { PreferencesModal } from './components/PreferencesModal';
 import { SettingsModal } from './components/SettingsModal';
-import { InvoicesManagementModal } from './components/InvoicesManagementModal';
 import { DashboardPage } from './pages/DashboardPage';
 import { ReconciliationPage } from './pages/ReconciliationPage';
 import { TenantsPage } from './pages/TenantsPage';
 import { PlansPage } from './pages/PlansPage';
+import { InvoicesPage } from './pages/InvoicesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 
@@ -24,7 +24,6 @@ const MainLayout: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState<boolean>(false);
-  const [isInvoicesModalOpen, setIsInvoicesModalOpen] = useState<boolean>(false);
   const [currentRate, setCurrentRate] = useState<number>(36.50);
   const [rateUpdatedTrigger, setRateUpdatedTrigger] = useState<number>(0);
 
@@ -58,7 +57,6 @@ const MainLayout: React.FC = () => {
         onOpenSettings={() => setCurrentTab('settings')}
         onOpenPreferences={() => setIsPreferencesOpen(true)}
         onNavigateTab={(tab) => setCurrentTab(tab)}
-        onOpenInvoices={() => setIsInvoicesModalOpen(true)}
       />
 
       {/* SPA Real-Time Preloading Bar (fast micro-indicator) */}
@@ -76,7 +74,6 @@ const MainLayout: React.FC = () => {
           currentTab={currentTab}
           setCurrentTab={setCurrentTab}
           pendingCount={pendingPayments.length}
-          onOpenInvoices={() => setIsInvoicesModalOpen(true)}
         />
 
         <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-20 md:pb-8">
@@ -101,6 +98,10 @@ const MainLayout: React.FC = () => {
             <PlansPage />
           </div>
 
+          <div className={currentTab === 'invoices' ? 'block' : 'hidden'}>
+            <InvoicesPage onNavigateToTenants={() => setCurrentTab('tenants')} />
+          </div>
+
           <div className={currentTab === 'settings' ? 'block' : 'hidden'}>
             <SettingsPage
               onRateUpdated={handleRateUpdated}
@@ -114,7 +115,6 @@ const MainLayout: React.FC = () => {
         currentTab={currentTab}
         setCurrentTab={setCurrentTab}
         pendingCount={pendingPayments.length}
-        onOpenInvoices={() => setIsInvoicesModalOpen(true)}
       />
 
       <SettingsModal
@@ -126,15 +126,6 @@ const MainLayout: React.FC = () => {
       <PreferencesModal
         isOpen={isPreferencesOpen}
         onClose={() => setIsPreferencesOpen(false)}
-      />
-
-      <InvoicesManagementModal
-        isOpen={isInvoicesModalOpen}
-        onClose={() => setIsInvoicesModalOpen(false)}
-        onOpenTenant={() => {
-          setIsInvoicesModalOpen(false);
-          setCurrentTab('tenants');
-        }}
       />
     </div>
   );

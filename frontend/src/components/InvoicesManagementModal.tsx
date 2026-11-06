@@ -121,7 +121,7 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-0 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-150">
       <div className="relative w-full max-w-7xl h-full sm:h-[95vh] bg-white dark:bg-[#121215] border-0 sm:border border-slate-200 dark:border-zinc-800 rounded-none sm:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
-        
+
         {/* MODAL HEADER */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-900/70">
           <div className="flex items-center space-x-3 min-w-0">
@@ -334,11 +334,10 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
                             </div>
                             <div className="flex items-center space-x-1.5 mt-0.5">
                               <span
-                                className={`inline-block px-1.5 py-0.2 rounded-md text-[9px] font-semibold uppercase ${
-                                  inv.tipo_documento === 'FACTURA_FISCAL'
-                                    ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                                    : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'
-                                }`}
+                                className={`inline-block px-1.5 py-0.2 rounded-md text-[9px] font-semibold uppercase ${inv.tipo_documento === 'FACTURA_FISCAL'
+                                  ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                                  : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'
+                                  }`}
                               >
                                 {inv.tipo_documento === 'FACTURA_FISCAL' ? 'Factura Fiscal' : 'Recibo'}
                               </span>
@@ -410,11 +409,10 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
                           {/* ESTADO */}
                           <td className="py-3 px-4 text-center whitespace-nowrap">
                             <span
-                              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                                inv.estado === 'PAGADO'
-                                  ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300'
-                                  : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                              }`}
+                              className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${inv.estado === 'PAGADO'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300'
+                                : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                }`}
                             >
                               <CheckCircle2 className="w-3 h-3" />
                               <span>{inv.estado}</span>
@@ -465,22 +463,20 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
                             {inv.numero_comprobante}
                           </div>
                           <span
-                            className={`inline-block px-1.5 py-0.2 rounded-md text-[9px] font-semibold uppercase mt-0.5 ${
-                              inv.tipo_documento === 'FACTURA_FISCAL'
-                                ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                                : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'
-                            }`}
+                            className={`inline-block px-1.5 py-0.2 rounded-md text-[9px] font-semibold uppercase mt-0.5 ${inv.tipo_documento === 'FACTURA_FISCAL'
+                              ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'
+                              }`}
                           >
                             {inv.tipo_documento === 'FACTURA_FISCAL' ? 'Factura Fiscal' : 'Recibo'}
                           </span>
                         </div>
 
                         <span
-                          className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                            inv.estado === 'PAGADO'
-                              ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300'
-                              : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                          }`}
+                          className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${inv.estado === 'PAGADO'
+                            ? 'bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300'
+                            : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                            }`}
                         >
                           <CheckCircle2 className="w-3 h-3" />
                           <span>{inv.estado}</span>
@@ -550,7 +546,7 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
       {selectedInvoice && (
         <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto animate-in zoom-in-95 duration-150">
           <div className="relative w-full max-w-2xl bg-white dark:bg-[#121215] text-slate-900 dark:text-zinc-100 rounded-2xl shadow-2xl border border-slate-200 dark:border-zinc-800 overflow-hidden print:border-none print:shadow-none print:m-0 print:p-0">
-            
+
             {/* Header Controls (Hidden in Print) */}
             <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-200 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900/80 print:hidden">
               <div className="flex items-center space-x-2 text-xs font-semibold text-slate-700 dark:text-zinc-300">
