@@ -110,7 +110,12 @@ const MainLayout: React.FC = () => {
         </main>
       </div>
 
-      <BottomNav currentTab={currentTab} setCurrentTab={setCurrentTab} />
+      <BottomNav
+        currentTab={currentTab}
+        setCurrentTab={setCurrentTab}
+        pendingCount={pendingPayments.length}
+        onOpenInvoices={() => setIsInvoicesModalOpen(true)}
+      />
 
       <SettingsModal
         isOpen={isSettingsOpen}
