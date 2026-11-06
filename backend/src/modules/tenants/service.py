@@ -759,16 +759,39 @@ class TenantService:
         tenant_id: uuid.UUID,
         req: TenantStatusUpdate,
     ) -> TenantDetailResponse:
-        result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+        result = await db.execute(
+            select(Tenant)
+            .where(Tenant.id == tenant_id)
+            .options(
+                selectinload(Tenant.subscriptions).selectinload(Subscription.plan),
+            )
+        )
         tenant = result.scalar_one_or_none()
         if not tenant:
             raise ResourceNotFoundError("Tenant", str(tenant_id))
 
         previous_status = tenant.status
         tenant.status = req.status
+        now = datetime.now(timezone.utc)
+
+        # Synchronize associated subscriptions status
+        for s in tenant.subscriptions:
+            if req.status in ("frozen", "suspended"):
+                if s.status in ("active", "grace_period", "trial"):
+                    s.status = req.status
+            elif req.status == "active":
+                if s.status in ("frozen", "suspended"):
+                    s.status = "active"
+
         await db.commit()
 
-        event = "account.suspended" if req.status in ("frozen", "suspended") else "account.activated"
+        if req.status in ("frozen", "suspended"):
+            event = "account.suspended"
+            action = "restrict"
+        else:
+            event = "account.activated"
+            action = "activate"
+
         if tenant.webhook_url:
             await WebhookDispatcher.dispatch_event(
                 db=db,
@@ -777,9 +800,15 @@ class TenantService:
                 webhook_secret=tenant.webhook_secret,
                 event_type=event,
                 data={
+                    "action": action,
+                    "tenant_id": str(tenant.id),
+                    "tax_id": tenant.tax_id,
+                    "commercial_name": tenant.commercial_name,
                     "previous_status": previous_status,
-                    "new_status": req.status,
+                    "status": req.status,
+                    "is_active": req.status == "active",
                     "reason": req.reason or "Modificación administrativa",
+                    "timestamp": now.isoformat(),
                 },
             )
 
@@ -843,6 +872,7 @@ class TenantService:
 
         if status_changed and tenant.webhook_url:
             event = "account.suspended" if tenant.status in ("frozen", "suspended") else "account.activated"
+            action = "restrict" if tenant.status in ("frozen", "suspended") else "activate"
             await WebhookDispatcher.dispatch_event(
                 db=db,
                 tenant_id=tenant.id,
@@ -850,9 +880,15 @@ class TenantService:
                 webhook_secret=tenant.webhook_secret,
                 event_type=event,
                 data={
+                    "action": action,
+                    "tenant_id": str(tenant.id),
+                    "tax_id": tenant.tax_id,
+                    "commercial_name": tenant.commercial_name,
                     "previous_status": prev_status,
-                    "new_status": tenant.status,
+                    "status": tenant.status,
+                    "is_active": tenant.status == "active",
                     "reason": "Actualización de perfil administrativo",
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
                 },
             )
 
@@ -1181,16 +1217,27 @@ class TenantService:
                 webhook_secret=tenant.webhook_secret,
                 event_type="subscription.renewed",
                 data={
+                    "action": "renew",
+                    "tenant_id": str(tenant.id),
+                    "tax_id": tenant.tax_id,
+                    "commercial_name": tenant.commercial_name,
+                    "status": "active",
+                    "is_active": True,
                     "license_token": token_str,
                     "expires_at": new_expiration.isoformat(),
+                    "period_start": active_sub.current_period_start.isoformat() if active_sub.current_period_start else now.isoformat(),
+                    "period_end": new_expiration.isoformat(),
+                    "billing_cycle": active_sub.billing_cycle,
                     "plan_code": plan.code,
                     "plan_name": plan.name,
+                    "amount_debited": plan_price,
                     "wallet_balance": new_balance,
                     "limits": {
                         "max_branches": plan.max_branches,
                         "max_pos_registers": plan.max_pos_registers,
                         "features": plan.features,
                     },
+                    "timestamp": now.isoformat(),
                 },
             )
 
@@ -1268,9 +1315,16 @@ class TenantService:
                             webhook_secret=tenant.webhook_secret,
                             event_type="account.suspended",
                             data={
+                                "action": "restrict",
+                                "tenant_id": str(tenant.id),
+                                "tax_id": tenant.tax_id,
+                                "commercial_name": tenant.commercial_name,
+                                "status": "suspended",
+                                "is_active": False,
                                 "reason": "Vencimiento de suscripción por saldo insuficiente",
                                 "plan_code": plan.code,
                                 "wallet_balance": wallet_balance,
+                                "timestamp": now.isoformat(),
                             },
                         )
 

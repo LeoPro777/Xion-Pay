@@ -203,9 +203,17 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Exchange Rate Pill with Sync Metadata */}
         <div className="relative" ref={rateMenuRef}>
-          <button
+          <div
             onClick={() => setShowRateTooltip(!showRateTooltip)}
-            className="hidden sm:inline-flex items-center h-8 px-3 rounded-xl border border-slate-200 dark:border-zinc-700/80 bg-slate-50 dark:bg-zinc-850 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer shadow-xs gap-1.5"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setShowRateTooltip(!showRateTooltip);
+              }
+            }}
+            className="hidden sm:inline-flex items-center h-8 px-3 rounded-xl border border-slate-200 dark:border-zinc-700/80 bg-slate-50 dark:bg-zinc-850 hover:bg-slate-100 dark:hover:bg-zinc-800 text-slate-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer shadow-xs gap-1.5 select-none"
             title="Detalle y sincronización de Tasa Oficial BCV"
           >
             <span className="text-[11px] text-slate-500 dark:text-zinc-400">Tasa BCV:</span>
@@ -213,13 +221,14 @@ export const Header: React.FC<HeaderProps> = ({
               {bcvRate.toFixed(2)} Bs
             </span>
             <button
+              type="button"
               onClick={handleManualSyncRate}
               className="p-0.5 text-slate-400 hover:text-slate-800 dark:hover:text-white transition-colors cursor-pointer rounded"
               title="Sincronizar tasa de cambio en vivo"
             >
               <RefreshCw className={`w-3 h-3 ${syncingRate ? 'animate-spin text-blue-500' : ''}`} />
             </button>
-          </button>
+          </div>
 
           {/* Rate Dropdown Tooltip */}
           {showRateTooltip && (

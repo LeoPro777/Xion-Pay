@@ -22,7 +22,7 @@ class SystemSetting(Base):
 
 
 class PaymentMethod(Base):
-    __tablename__ = "payment_methods"
+    __tablename__ = "receiving_payment_methods"
 
     id = Column(GUID(), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False)

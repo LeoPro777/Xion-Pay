@@ -1080,3 +1080,110 @@ async def test_payment_methods_crud_and_catalog_reflection(client: AsyncClient, 
     assert get_del.status_code == 404
 
 
+@pytest.mark.asyncio
+async def test_webhook_dispatched_on_suspension_and_renewal(client: AsyncClient, test_db: AsyncSession, monkeypatch):
+    """Verify webhook is dispatched immediately to Xion-Manager on suspension and renewal."""
+    from src.modules.auth.models import AdminUser
+    from src.modules.tenants.models import Tenant, Subscription
+    from src.modules.plans.models import Plan
+    from src.core.security import create_access_token
+    from src.modules.webhooks.dispatcher import WebhookDispatcher
+    from datetime import datetime, timedelta, timezone
+
+    # Admin auth
+    admin = AdminUser(
+        email="webhook_admin@xionpay.internal",
+        full_name="Webhook Admin",
+        google_sub="sub-wh-admin",
+        role="superadmin",
+        is_active=True,
+    )
+    test_db.add(admin)
+
+    # Plan & Tenant with Webhook
+    plan = Plan(
+        code="wh_plan",
+        name="Webhook Plan",
+        price_usd=40.00,
+        max_branches=1,
+        max_pos_registers=2,
+        features={"inventory": True},
+    )
+    test_db.add(plan)
+    await test_db.flush()
+
+    tenant = Tenant(
+        commercial_name="Automotores Los Andes",
+        tax_id="J-99887766-5",
+        owner_email="gerencia@losandes.com",
+        owner_phone="+584149998877",
+        webhook_url="https://xion-manager.internal/webhooks/xion-pay",
+        webhook_secret="test_secret_key_12345",
+        status="active",
+        wallet_balance=100.00,
+    )
+    test_db.add(tenant)
+    await test_db.flush()
+
+    now = datetime.now(timezone.utc)
+    sub = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        billing_cycle="monthly",
+        status="active",
+        current_period_start=now - timedelta(days=25),
+        current_period_end=now + timedelta(days=5),
+    )
+    test_db.add(sub)
+    await test_db.commit()
+
+    token = create_access_token({"sub": admin.email, "role": admin.role, "id": str(admin.id)})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Intercept WebhookDispatcher.dispatch_event to verify call parameters
+    dispatched_events = []
+    original_dispatch = WebhookDispatcher.dispatch_event
+
+    async def mock_dispatch(db, tenant_id, webhook_url, webhook_secret, event_type, data):
+        dispatched_events.append({
+            "tenant_id": tenant_id,
+            "webhook_url": webhook_url,
+            "webhook_secret": webhook_secret,
+            "event_type": event_type,
+            "data": data,
+        })
+        return None
+
+    monkeypatch.setattr(WebhookDispatcher, "dispatch_event", mock_dispatch)
+
+    # 1. TEST SUSPENSION: Suspend account
+    res_susp = await client.patch(
+        f"/api/v1/tenants/{tenant.id}/status",
+        json={"status": "suspended", "reason": "Incumplimiento de términos contractuales"},
+        headers=headers,
+    )
+    assert res_susp.status_code == 200
+    assert len(dispatched_events) == 1
+    ev_susp = dispatched_events[0]
+    assert ev_susp["event_type"] == "account.suspended"
+    assert ev_susp["data"]["action"] == "restrict"
+    assert ev_susp["data"]["status"] == "suspended"
+    assert ev_susp["data"]["is_active"] is False
+    assert ev_susp["data"]["tax_id"] == "J-99887766-5"
+    assert "contractuales" in ev_susp["data"]["reason"]
+
+    # 2. TEST RENEWAL: Renew subscription from balance
+    dispatched_events.clear()
+    res_renew = await client.post(f"/api/v1/tenants/{tenant.id}/renew-from-balance", headers=headers)
+    assert res_renew.status_code == 200
+    assert len(dispatched_events) == 1
+    ev_renew = dispatched_events[0]
+    assert ev_renew["event_type"] == "subscription.renewed"
+    assert ev_renew["data"]["action"] == "renew"
+    assert ev_renew["data"]["status"] == "active"
+    assert ev_renew["data"]["is_active"] is True
+    assert ev_renew["data"]["tax_id"] == "J-99887766-5"
+    assert "license_token" in ev_renew["data"]
+    assert "expires_at" in ev_renew["data"]
+
+
