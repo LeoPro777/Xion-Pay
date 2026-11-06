@@ -174,6 +174,11 @@ class ComprobanteCreateRequest(BaseModel):
     tasa_bcv: float = Field(..., gt=0, description="Tasa oficial BCV")
     aplica_igtf: bool = Field(default=False, description="Aplica 3% IGTF si el pago es en divisas en efectivo/cripto")
     tipo_documento: Optional[str] = Field(None, description="RECIBO_COBRO o PROFORMA (MVP), o FACTURA_FISCAL (SENIAT)")
+    payment_method: Optional[str] = Field(None, description="Método de pago (pago_movil, transferencia, zelle, efectivo, billetera)")
+    origin_bank: Optional[str] = Field(None, description="Banco emisor o entidad de pago")
+    destination_bank: Optional[str] = Field(None, description="Cuenta o banco receptor")
+    reference_number: Optional[str] = Field(None, description="Número de referencia o transacción bancaria")
+    notes: Optional[str] = Field(None, description="Notas o concepto del pago")
 
 
 class ComprobanteResponse(BaseModel):
@@ -197,6 +202,12 @@ class ComprobanteResponse(BaseModel):
     datos_fiscales_snapshot: Optional[Dict[str, Any]] = None
     estado: str
     created_at: datetime
+    commercial_name: Optional[str] = None
+    tax_id: Optional[str] = None
+    payment_method: Optional[str] = None
+    origin_bank: Optional[str] = None
+    destination_bank: Optional[str] = None
+    reference_number: Optional[str] = None
 
 
 # ==============================================================================

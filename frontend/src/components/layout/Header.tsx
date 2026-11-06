@@ -29,12 +29,14 @@ interface HeaderProps {
   onOpenSettings?: () => void;
   onOpenPreferences?: () => void;
   onNavigateTab?: (tab: string) => void;
+  onOpenInvoices?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenSettings,
   onOpenPreferences,
   onNavigateTab,
+  onOpenInvoices,
 }) => {
   const { user, logout } = useAuth();
   const { notifications, unreadCount, clearNotifications } = useNotifications();
@@ -271,6 +273,18 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </div>
 
+        {/* FACTURACIÓN INMUTABLE BUTTON */}
+        {onOpenInvoices && (
+          <button
+            onClick={onOpenInvoices}
+            className="hidden sm:inline-flex items-center h-8 px-2.5 sm:px-3 rounded-xl border border-slate-200 dark:border-zinc-700/80 bg-slate-50 dark:bg-zinc-850 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:border-purple-200 dark:hover:border-purple-800 text-slate-700 dark:text-zinc-300 hover:text-purple-700 dark:hover:text-purple-300 text-xs font-medium transition-all cursor-pointer shadow-xs gap-1.5"
+            title="Gestión de Facturas y Comprobantes Inmutables"
+          >
+            <Receipt className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+            <span className="font-semibold">Facturación</span>
+          </button>
+        )}
+
         {/* Connected Status Pill */}
         <div className="hidden md:inline-flex items-center h-8 px-3 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium shadow-xs gap-1.5">
           <span className="relative flex h-2 w-2 shrink-0">
@@ -406,6 +420,26 @@ export const Header: React.FC<HeaderProps> = ({
                     {user.email}
                   </span>
                 </div>
+
+                {/* Option 0: Facturación & Comprobantes */}
+                {onOpenInvoices && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSettingsDropdown(false);
+                      onOpenInvoices();
+                    }}
+                    className="w-full flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-medium text-slate-700 dark:text-zinc-200 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-700 dark:hover:text-purple-300 transition-colors cursor-pointer text-left"
+                  >
+                    <Receipt className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <div>
+                      <span className="block font-semibold">Facturas & Comprobantes</span>
+                      <span className="block text-[10px] text-slate-400 dark:text-zinc-500">
+                        Historial inmutable, tasas y desgloses
+                      </span>
+                    </div>
+                  </button>
+                )}
 
                 {/* Option 1: Configuración del Sistema */}
                 <button

@@ -155,6 +155,12 @@ export interface ComprobanteItem {
   datos_fiscales_snapshot?: Record<string, any>;
   estado: string;
   created_at: string;
+  commercial_name?: string;
+  tax_id?: string;
+  payment_method?: string;
+  origin_bank?: string;
+  destination_bank?: string;
+  reference_number?: string;
 }
 
 export interface TenantListItem {

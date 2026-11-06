@@ -215,28 +215,7 @@ class TenantService:
             # Sort newest first
             sorted_comps = sorted(tenant.comprobantes, key=lambda c: c.created_at, reverse=True)
             for c in sorted_comps[:20]:
-                comprobantes_resp.append(
-                    ComprobanteResponse(
-                        id=c.id,
-                        tenant_id=c.tenant_id,
-                        subscription_id=c.subscription_id,
-                        tipo_documento=c.tipo_documento,
-                        numero_comprobante=c.numero_comprobante,
-                        numero_control=c.numero_control,
-                        moneda_base=c.moneda_base,
-                        monto_usd=float(c.monto_usd),
-                        tasa_bcv=float(c.tasa_bcv),
-                        base_imponible_ves=float(c.base_imponible_ves),
-                        porcentaje_iva=float(c.porcentaje_iva),
-                        monto_iva_ves=float(c.monto_iva_ves),
-                        aplica_igtf=c.aplica_igtf,
-                        monto_igtf_ves=float(c.monto_igtf_ves),
-                        total_ves=float(c.total_ves),
-                        datos_fiscales_snapshot=c.datos_fiscales_snapshot,
-                        estado=c.estado,
-                        created_at=c.created_at,
-                    )
-                )
+                comprobantes_resp.append(TenantService._map_comprobante(c, tenant))
 
         countdown_data = TenantService._calculate_countdown(active_sub)
 
@@ -697,6 +676,20 @@ class TenantService:
                 "modo": "MVP Recibo Interno",
             }
 
+        # Enrich snapshot with payment coordinates and metadata
+        has_payment_details = bool(req.payment_method or req.reference_number)
+        datos_snapshot.update({
+            "commercial_name": tenant.commercial_name,
+            "tax_id": tenant.tax_id,
+            "metodo_pago": req.payment_method or ("pago_movil" if has_payment_details else "Pendiente"),
+            "banco_origen": req.origin_bank or "No especificado",
+            "banco_destino": req.destination_bank,
+            "referencia": req.reference_number or (f"REF-{uuid.uuid4().hex[:8].upper()}" if has_payment_details else None),
+            "notas": req.notes,
+            "inmutable": True,
+        })
+        estado_comprobante = "PAGADO" if has_payment_details else "EMITIDO"
+
         comprobante = ComprobantePago(
             tenant_id=tenant.id,
             subscription_id=active_sub.id if active_sub else None,
@@ -713,31 +706,49 @@ class TenantService:
             monto_igtf_ves=monto_igtf_ves,
             total_ves=total_ves,
             datos_fiscales_snapshot=datos_snapshot,
-            estado="EMITIDO",
+            estado=estado_comprobante,
         )
         db.add(comprobante)
         await db.commit()
         await db.refresh(comprobante)
 
+        return TenantService._map_comprobante(comprobante, tenant)
+
+    @staticmethod
+    def _map_comprobante(c: ComprobantePago, tenant: Optional[Tenant] = None) -> ComprobanteResponse:
+        snap = c.datos_fiscales_snapshot or {}
+        t_name = (tenant.commercial_name if tenant else None) or snap.get("commercial_name") or snap.get("nombre_comercial")
+        t_rif = (tenant.tax_id if tenant else None) or snap.get("tax_id") or snap.get("rif")
+        method = snap.get("metodo_pago") or snap.get("payment_method") or "Transferencia / Pago Móvil"
+        orig_bank = snap.get("banco_origen") or snap.get("origin_bank")
+        dest_bank = snap.get("banco_destino") or snap.get("destination_bank")
+        ref_num = snap.get("referencia") or snap.get("reference_number")
+
         return ComprobanteResponse(
-            id=comprobante.id,
-            tenant_id=comprobante.tenant_id,
-            subscription_id=comprobante.subscription_id,
-            tipo_documento=comprobante.tipo_documento,
-            numero_comprobante=comprobante.numero_comprobante,
-            numero_control=comprobante.numero_control,
-            moneda_base=comprobante.moneda_base,
-            monto_usd=float(comprobante.monto_usd),
-            tasa_bcv=float(comprobante.tasa_bcv),
-            base_imponible_ves=float(comprobante.base_imponible_ves),
-            porcentaje_iva=float(comprobante.porcentaje_iva),
-            monto_iva_ves=float(comprobante.monto_iva_ves),
-            aplica_igtf=comprobante.aplica_igtf,
-            monto_igtf_ves=float(comprobante.monto_igtf_ves),
-            total_ves=float(comprobante.total_ves),
-            datos_fiscales_snapshot=comprobante.datos_fiscales_snapshot,
-            estado=comprobante.estado,
-            created_at=comprobante.created_at,
+            id=c.id,
+            tenant_id=c.tenant_id,
+            subscription_id=c.subscription_id,
+            tipo_documento=c.tipo_documento,
+            numero_comprobante=c.numero_comprobante,
+            numero_control=c.numero_control,
+            moneda_base=c.moneda_base,
+            monto_usd=float(c.monto_usd),
+            tasa_bcv=float(c.tasa_bcv),
+            base_imponible_ves=float(c.base_imponible_ves),
+            porcentaje_iva=float(c.porcentaje_iva),
+            monto_iva_ves=float(c.monto_iva_ves),
+            aplica_igtf=c.aplica_igtf,
+            monto_igtf_ves=float(c.monto_igtf_ves),
+            total_ves=float(c.total_ves),
+            datos_fiscales_snapshot=c.datos_fiscales_snapshot,
+            estado=c.estado,
+            created_at=c.created_at,
+            commercial_name=t_name,
+            tax_id=t_rif,
+            payment_method=method,
+            origin_bank=orig_bank,
+            destination_bank=dest_bank,
+            reference_number=ref_num,
         )
 
     @staticmethod
@@ -745,32 +756,49 @@ class TenantService:
         db: AsyncSession,
         tenant_id: uuid.UUID,
     ) -> List[ComprobanteResponse]:
-        query = select(ComprobantePago).where(ComprobantePago.tenant_id == tenant_id).order_by(ComprobantePago.created_at.desc())
+        query = (
+            select(ComprobantePago)
+            .where(ComprobantePago.tenant_id == tenant_id)
+            .options(selectinload(ComprobantePago.tenant))
+            .order_by(ComprobantePago.created_at.desc())
+        )
         res = await db.execute(query)
         items = res.scalars().all()
-        return [
-            ComprobanteResponse(
-                id=c.id,
-                tenant_id=c.tenant_id,
-                subscription_id=c.subscription_id,
-                tipo_documento=c.tipo_documento,
-                numero_comprobante=c.numero_comprobante,
-                numero_control=c.numero_control,
-                moneda_base=c.moneda_base,
-                monto_usd=float(c.monto_usd),
-                tasa_bcv=float(c.tasa_bcv),
-                base_imponible_ves=float(c.base_imponible_ves),
-                porcentaje_iva=float(c.porcentaje_iva),
-                monto_iva_ves=float(c.monto_iva_ves),
-                aplica_igtf=c.aplica_igtf,
-                monto_igtf_ves=float(c.monto_igtf_ves),
-                total_ves=float(c.total_ves),
-                datos_fiscales_snapshot=c.datos_fiscales_snapshot,
-                estado=c.estado,
-                created_at=c.created_at,
+        return [TenantService._map_comprobante(c, c.tenant) for c in items]
+
+    @staticmethod
+    async def list_all_comprobantes(
+        db: AsyncSession,
+        search: Optional[str] = None,
+        tipo_documento: Optional[str] = None,
+        estado: Optional[str] = None,
+        limit: int = 150,
+    ) -> List[ComprobanteResponse]:
+        """Lista todas las facturas y comprobantes inmutables emitidos por el sistema."""
+        query = (
+            select(ComprobantePago)
+            .join(Tenant, ComprobantePago.tenant_id == Tenant.id, isouter=True)
+            .options(selectinload(ComprobantePago.tenant))
+            .order_by(ComprobantePago.created_at.desc())
+        )
+        if tipo_documento and tipo_documento.strip():
+            query = query.where(ComprobantePago.tipo_documento == tipo_documento.strip())
+        if estado and estado.strip():
+            query = query.where(ComprobantePago.estado == estado.strip())
+        if search and search.strip():
+            search_pattern = f"%{search.strip()}%"
+            query = query.where(
+                or_(
+                    ComprobantePago.numero_comprobante.ilike(search_pattern),
+                    ComprobantePago.numero_control.ilike(search_pattern),
+                    Tenant.commercial_name.ilike(search_pattern),
+                    Tenant.tax_id.ilike(search_pattern),
+                )
             )
-            for c in items
-        ]
+        query = query.limit(limit)
+        res = await db.execute(query)
+        items = res.scalars().all()
+        return [TenantService._map_comprobante(c, c.tenant) for c in items]
 
     @staticmethod
     async def update_status(

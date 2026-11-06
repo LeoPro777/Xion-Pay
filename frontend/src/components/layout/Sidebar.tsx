@@ -1,13 +1,14 @@
 import React from 'react';
-import { LayoutDashboard, CheckSquare, Users, Layers, Sliders } from 'lucide-react';
+import { LayoutDashboard, CheckSquare, Users, Layers, Sliders, Receipt } from 'lucide-react';
 
 interface SidebarProps {
   currentTab: string;
   setCurrentTab: (tab: string) => void;
   pendingCount?: number;
+  onOpenInvoices?: () => void;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, pendingCount = 0 }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, pendingCount = 0, onOpenInvoices }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Panel & Métricas', icon: LayoutDashboard },
     { id: 'reconciliation', label: 'Bandeja Conciliación', icon: CheckSquare, badge: pendingCount },
@@ -55,6 +56,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setCurrentTab, pen
           );
         })}
       </nav>
+
+      {onOpenInvoices && (
+        <div className="pt-3 mt-auto border-t border-slate-100 dark:border-zinc-800/80">
+          <button
+            onClick={onOpenInvoices}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/30 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200/60 dark:border-purple-800/40 transition-all cursor-pointer shadow-2xs group"
+            title="Administración de facturas y comprobantes emitidos"
+          >
+            <div className="flex items-center space-x-2.5">
+              <Receipt className="w-4 h-4 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
+              <span>Facturas & Recibos</span>
+            </div>
+            <span className="text-[10px] uppercase font-bold text-purple-600 dark:text-purple-300 bg-purple-200/60 dark:bg-purple-900/60 px-1.5 py-0.5 rounded-md">
+              Audit
+            </span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 };

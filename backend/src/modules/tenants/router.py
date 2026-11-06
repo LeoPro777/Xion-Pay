@@ -65,6 +65,24 @@ async def list_tenants(
     return await TenantService.list_tenants(db, search=search, status_filter=status)
 
 
+@router.get("/comprobantes/all", response_model=List[ComprobanteResponse])
+@clients_router.get("/comprobantes/all", response_model=List[ComprobanteResponse])
+@router.get("/invoices/all", response_model=List[ComprobanteResponse], include_in_schema=False)
+@clients_router.get("/invoices/all", response_model=List[ComprobanteResponse], include_in_schema=False)
+async def list_all_system_comprobantes(
+    search: Optional[str] = Query(None, description="Buscar por número, control, RIF o razón social"),
+    tipo: Optional[str] = Query(None, description="Filtrar por tipo: RECIBO_COBRO, FACTURA_FISCAL, PROFORMA"),
+    estado: Optional[str] = Query(None, description="Filtrar por estado: PAGADO, EMITIDO, PENDIENTE"),
+    limit: int = Query(150, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+    _: AdminUser = Depends(get_current_admin),
+):
+    """Lista historial global de facturas y comprobantes emitidos por el sistema."""
+    return await TenantService.list_all_comprobantes(
+        db, search=search, tipo_documento=tipo, estado=estado, limit=limit
+    )
+
+
 @router.get("/{tenant_id}", response_model=TenantDetailResponse)
 @clients_router.get("/{tenant_id}", response_model=TenantDetailResponse)
 async def get_tenant_detail(

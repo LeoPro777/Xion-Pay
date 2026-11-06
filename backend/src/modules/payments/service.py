@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.crypto_licensing import generate_license_token, compute_token_hash
 from src.modules.payments.models import PaymentReport
-from src.modules.tenants.models import Tenant, Subscription, LicenseToken
+from src.modules.tenants.models import Tenant, Subscription, LicenseToken, ComprobantePago
 from src.modules.plans.models import Plan
 from src.modules.auth.models import AdminUser
 from src.modules.payments.schemas import (
@@ -248,7 +248,7 @@ class PaymentService:
             select(PaymentReport)
             .where(PaymentReport.id == payment_id)
             .options(
-                selectinload(PaymentReport.tenant),
+                selectinload(PaymentReport.tenant).selectinload(Tenant.fiscal_profile),
                 selectinload(PaymentReport.subscription).selectinload(Subscription.plan),
             )
         )
@@ -330,6 +330,52 @@ class PaymentService:
             expires_at=new_period_end,
         )
         db.add(license_record)
+
+        # Issue Immutable Comprobante / Factura de Pago
+        is_fiscal = bool(tenant.fiscal_profile and tenant.fiscal_profile.activo_seniat)
+        t_rate = float(payment.exchange_rate or 1.0)
+        base_ves = round(approved_usd * t_rate, 2)
+        iva_pct = 16.0 if is_fiscal else 0.0
+        iva_ves = round(base_ves * 0.16, 2) if is_fiscal else 0.0
+        total_ves_calc = round(base_ves + iva_ves, 2)
+        doc_type = "FACTURA_FISCAL" if is_fiscal else "RECIBO_COBRO"
+        num_comp = f"FAC-{now.year}-{uuid.uuid4().hex[:6].upper()}" if is_fiscal else f"REC-{now.year}-{uuid.uuid4().hex[:6].upper()}"
+        num_ctrl = f"CTRL-{now.strftime('%Y%m')}-{uuid.uuid4().hex[:6].upper()}" if is_fiscal else None
+
+        comprobante_record = ComprobantePago(
+            tenant_id=tenant.id,
+            subscription_id=sub.id,
+            tipo_documento=doc_type,
+            numero_comprobante=num_comp,
+            numero_control=num_ctrl,
+            moneda_base="USD",
+            monto_usd=approved_usd,
+            tasa_bcv=t_rate,
+            base_imponible_ves=base_ves,
+            porcentaje_iva=iva_pct,
+            monto_iva_ves=iva_ves,
+            aplica_igtf=False,
+            monto_igtf_ves=0.00,
+            total_ves=total_ves_calc,
+            datos_fiscales_snapshot={
+                "commercial_name": tenant.commercial_name,
+                "tax_id": tenant.tax_id,
+                "contact_name": tenant.contact_name,
+                "plan_name": plan.name,
+                "billing_cycle": sub.billing_cycle,
+                "metodo_pago": payment.payment_method_type or "pago_movil",
+                "banco_origen": payment.origin_bank,
+                "banco_destino": payment.destination_bank,
+                "referencia": payment.reference_number,
+                "monto_reportado": float(payment.amount),
+                "moneda_reportada": payment.currency,
+                "payment_report_id": str(payment.id),
+                "inmutable": True,
+            },
+            estado="PAGADO",
+            created_at=now,
+        )
+        db.add(comprobante_record)
 
         await db.commit()
 
@@ -467,7 +513,7 @@ class PaymentService:
             select(PaymentReport)
             .where(PaymentReport.id == payment_id)
             .options(
-                selectinload(PaymentReport.tenant),
+                selectinload(PaymentReport.tenant).selectinload(Tenant.fiscal_profile),
                 selectinload(PaymentReport.subscription).selectinload(Subscription.plan),
             )
         )
