@@ -111,6 +111,7 @@ export const TenantsPage: React.FC = () => {
     owner_phone: '',
     crm_notes: '',
     webhook_url: '',
+    webhook_secret: '',
     status: 'active',
     wallet_balance: 0.0,
     delivery_channel: 'email',
@@ -271,8 +272,9 @@ export const TenantsPage: React.FC = () => {
       tax_id: t.tax_id || '',
       owner_email: t.owner_email || '',
       owner_phone: t.owner_phone || '',
-      crm_notes: (t as TenantDetail).crm_notes || '',
-      webhook_url: (t as TenantDetail).webhook_url || '',
+      crm_notes: t.crm_notes || '',
+      webhook_url: t.webhook_url || '',
+      webhook_secret: t.webhook_secret || '',
       status: t.status || 'active',
       wallet_balance: t.wallet_balance ?? 0.0,
       delivery_channel: t.delivery_channel || 'email',
@@ -296,6 +298,7 @@ export const TenantsPage: React.FC = () => {
         owner_phone: editForm.owner_phone.trim(),
         crm_notes: editForm.crm_notes.trim() || undefined,
         webhook_url: editForm.webhook_url.trim() || undefined,
+        webhook_secret: editForm.webhook_secret.trim() || undefined,
         status: editForm.status,
         wallet_balance: editForm.wallet_balance,
         delivery_channel: editForm.delivery_channel,
@@ -1914,16 +1917,34 @@ export const TenantsPage: React.FC = () => {
                 ></textarea>
               </div>
 
-              {/* Webhook URL */}
-              <div>
-                <label className="font-semibold text-slate-700 dark:text-zinc-300 block mb-1">Webhook URL (Opcional):</label>
-                <input
-                  type="url"
-                  value={editForm.webhook_url}
-                  onChange={(e) => setEditForm({ ...editForm, webhook_url: e.target.value })}
-                  placeholder="https://cliente.com/api/xion-webhook"
-                  className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
-                />
+              {/* Webhook URL & Secret */}
+              <div className="space-y-3 pt-1 border-t border-slate-100 dark:border-zinc-800">
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700 dark:text-zinc-300 block text-xs">URL del webhook (Xion-Manager / Servidor Cliente):</label>
+                    <span className="text-[10px] text-slate-400 font-mono">POST /api/v1/webhooks/xion-pay</span>
+                  </div>
+                  <input
+                    type="url"
+                    value={editForm.webhook_url}
+                    onChange={(e) => setEditForm({ ...editForm, webhook_url: e.target.value })}
+                    placeholder="http://localhost:8000/api/v1/webhooks/xion-pay"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700 dark:text-zinc-300 block text-xs">Clave Secreta Webhook (HMAC Secret):</label>
+                    <span className="text-[10px] text-amber-500 font-medium">Debe coincidir con XION_PAY_WEBHOOK_SECRET</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={editForm.webhook_secret}
+                    onChange={(e) => setEditForm({ ...editForm, webhook_secret: e.target.value })}
+                    placeholder="xion_pay_webhook_secret_key"
+                    className="w-full bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-1 focus:ring-accent"
+                  />
+                </div>
               </div>
 
               {/* Billetera y Canal de Entrega */}

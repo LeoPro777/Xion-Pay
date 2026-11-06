@@ -142,6 +142,9 @@ class TenantService:
                     trial_days_remaining=TenantService._calculate_trial_days_remaining(t),
                     courtesy_days_granted=t.courtesy_days_granted,
                     crm_lead_source=t.crm_lead_source or "manual",
+                    crm_notes=t.crm_notes,
+                    webhook_url=t.webhook_url,
+                    webhook_secret=t.webhook_secret,
                     activo_seniat=activo_seniat,
                     wallet_balance=float(t.wallet_balance or 0.0),
                     delivery_channel=t.delivery_channel or "email",
@@ -274,7 +277,12 @@ class TenantService:
             doc_num = req.id_doc_number.strip() if req.id_doc_number else None
             doc_type = (req.id_doc_type or "V").strip().upper()
             if doc_num:
-                tax_id = f"{doc_type}-{doc_num}"
+                clean_doc = doc_num.upper()
+                if clean_doc.startswith(f"{doc_type}-"):
+                    clean_doc = clean_doc[len(doc_type) + 1:].strip()
+                elif clean_doc.startswith(doc_type):
+                    clean_doc = clean_doc[len(doc_type):].strip()
+                tax_id = f"{doc_type}-{clean_doc}"
             else:
                 tax_id = f"CLI-{uuid.uuid4().hex[:8].upper()}"
 
@@ -446,6 +454,7 @@ class TenantService:
                 client_id=existing_tenant.id,
                 commercial_name=existing_tenant.commercial_name,
                 contact_name=existing_tenant.contact_name,
+                tax_id=existing_tenant.tax_id,
                 email=existing_tenant.owner_email,
                 phone=existing_tenant.owner_phone,
                 status=existing_tenant.status,
@@ -453,6 +462,8 @@ class TenantService:
                 trial_ends_at=end_t,
                 trial_days_remaining=days_rem,
                 license_token=token_str,
+                webhook_secret=existing_tenant.webhook_secret,
+                webhook_url=existing_tenant.webhook_url,
                 message="Cuenta existente reconocida. Licencia de prueba sincronizada exitosamente.",
             )
 
@@ -460,7 +471,12 @@ class TenantService:
         doc_num = req.documento_identidad_numero.strip() if req.documento_identidad_numero else None
         doc_type = (req.documento_identidad_tipo or "V").strip().upper()
         if doc_num:
-            proposed_tax_id = f"{doc_type}-{doc_num}"
+            clean_doc = doc_num.upper()
+            if clean_doc.startswith(f"{doc_type}-"):
+                clean_doc = clean_doc[len(doc_type) + 1:].strip()
+            elif clean_doc.startswith(doc_type):
+                clean_doc = clean_doc[len(doc_type):].strip()
+            proposed_tax_id = f"{doc_type}-{clean_doc}"
         else:
             proposed_tax_id = f"TRIAL-{uuid.uuid4().hex[:8].upper()}"
 
@@ -565,6 +581,7 @@ class TenantService:
             client_id=tenant.id,
             commercial_name=tenant.commercial_name,
             contact_name=tenant.contact_name,
+            tax_id=tenant.tax_id,
             email=tenant.owner_email,
             phone=tenant.owner_phone,
             status=tenant.status,
@@ -572,6 +589,8 @@ class TenantService:
             trial_ends_at=trial_end,
             trial_days_remaining=30,
             license_token=token_str,
+            webhook_secret=tenant.webhook_secret,
+            webhook_url=tenant.webhook_url,
             message="Prueba gratuita de 30 días activada con éxito.",
         )
 
@@ -792,6 +811,19 @@ class TenantService:
             event = "account.activated"
             action = "activate"
 
+        license_jwt = None
+        if event == "account.activated":
+            lic_q = (
+                select(LicenseToken)
+                .where(LicenseToken.tenant_id == tenant.id)
+                .order_by(LicenseToken.issued_at.desc())
+                .limit(1)
+            )
+            res_lic = await db.execute(lic_q)
+            latest_lic = res_lic.scalar_one_or_none()
+            if latest_lic and latest_lic.payload_snapshot:
+                license_jwt = latest_lic.payload_snapshot.get("license_jwt")
+
         if tenant.webhook_url:
             await WebhookDispatcher.dispatch_event(
                 db=db,
@@ -807,6 +839,7 @@ class TenantService:
                     "previous_status": previous_status,
                     "status": req.status,
                     "is_active": req.status == "active",
+                    "license_token": license_jwt,
                     "reason": req.reason or "Modificación administrativa",
                     "timestamp": now.isoformat(),
                 },
@@ -827,14 +860,19 @@ class TenantService:
             raise ResourceNotFoundError("Tenant", str(tenant_id))
 
         if req.tax_id and req.tax_id.strip() != tenant.tax_id:
-            res_tax = await db.execute(select(Tenant).where(Tenant.tax_id == req.tax_id.strip()))
+            cleaned_tax = req.tax_id.strip().upper()
+            if cleaned_tax.startswith("J-J-"):
+                cleaned_tax = "J-" + cleaned_tax[4:]
+            elif cleaned_tax.startswith("V-V-"):
+                cleaned_tax = "V-" + cleaned_tax[4:]
+            res_tax = await db.execute(select(Tenant).where(Tenant.tax_id == cleaned_tax, Tenant.id != tenant_id))
             if res_tax.scalar_one_or_none():
                 raise XionPayBaseException(
-                    message=f"El identificador fiscal '{req.tax_id}' ya pertenece a otro cliente.",
+                    message=f"El identificador fiscal '{cleaned_tax}' ya pertenece a otro cliente.",
                     error_code="TAX_ID_DUPLICATE",
                     status_code=400,
                 )
-            tenant.tax_id = req.tax_id.strip()
+            tenant.tax_id = cleaned_tax
 
         if req.commercial_name is not None:
             tenant.commercial_name = req.commercial_name.strip()
@@ -873,6 +911,19 @@ class TenantService:
         if status_changed and tenant.webhook_url:
             event = "account.suspended" if tenant.status in ("frozen", "suspended") else "account.activated"
             action = "restrict" if tenant.status in ("frozen", "suspended") else "activate"
+            license_jwt = None
+            if event == "account.activated":
+                lic_q = (
+                    select(LicenseToken)
+                    .where(LicenseToken.tenant_id == tenant.id)
+                    .order_by(LicenseToken.issued_at.desc())
+                    .limit(1)
+                )
+                res_lic = await db.execute(lic_q)
+                latest_lic = res_lic.scalar_one_or_none()
+                if latest_lic and latest_lic.payload_snapshot:
+                    license_jwt = latest_lic.payload_snapshot.get("license_jwt")
+
             await WebhookDispatcher.dispatch_event(
                 db=db,
                 tenant_id=tenant.id,
@@ -887,6 +938,7 @@ class TenantService:
                     "previous_status": prev_status,
                     "status": tenant.status,
                     "is_active": tenant.status == "active",
+                    "license_token": license_jwt,
                     "reason": "Actualización de perfil administrativo",
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 },

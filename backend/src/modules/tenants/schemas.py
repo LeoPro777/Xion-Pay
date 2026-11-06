@@ -303,6 +303,9 @@ class TenantListItemResponse(BaseModel):
     trial_days_remaining: Optional[int] = None
     courtesy_days_granted: int
     crm_lead_source: Optional[str] = "manual"
+    crm_notes: Optional[str] = None
+    webhook_url: Optional[str] = None
+    webhook_secret: Optional[str] = None
     activo_seniat: bool = False
     wallet_balance: float = 0.00
     delivery_channel: str = "email"

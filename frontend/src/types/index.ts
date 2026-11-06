@@ -170,6 +170,9 @@ export interface TenantListItem {
   wallet_balance?: number;
   delivery_channel?: 'email' | 'whatsapp' | 'telegram' | 'all' | string;
   telegram_chat_id?: string;
+  webhook_url?: string;
+  webhook_secret?: string;
+  crm_notes?: string;
   trial_days_remaining?: number;
   courtesy_days_granted: number;
   crm_lead_source?: string;
