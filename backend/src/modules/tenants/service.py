@@ -34,6 +34,7 @@ from src.modules.tenants.schemas import (
 from src.modules.plans.schemas import PlanResponse
 from src.modules.webhooks.dispatcher import WebhookDispatcher
 from src.modules.notifications.delivery_service import DeliveryNoteService
+from src.modules.notifications.manager import notification_manager
 from src.utils.exceptions import ResourceNotFoundError, XionPayBaseException
 
 
@@ -383,6 +384,47 @@ class TenantService:
                 },
             )
 
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_CREATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "status": tenant.status,
+                "timestamp": now.isoformat(),
+            })
+        except Exception:
+            pass
+
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "wallet_balance": new_balance,
+                "status": "active",
+                "timestamp": now.isoformat(),
+            })
+            await notification_manager.broadcast({
+                "type": "INVOICE_ISSUED",
+                "comprobante_id": str(recibo.id),
+                "numero_comprobante": recibo.numero_comprobante,
+                "tenant_id": str(tenant.id),
+                "commercial_name": tenant.commercial_name,
+                "tax_id": tenant.tax_id,
+                "monto_usd": plan_price,
+                "total_ves": float(recibo.total_ves),
+                "tasa_bcv": float(current_rate),
+                "payment_method": "billetera",
+                "origin_bank": "Débito Billetera Xion-Pay",
+                "reference_number": recibo_num,
+                "estado": "PAGADO",
+                "created_at": now.isoformat(),
+            })
+        except Exception:
+            pass
+
         return await TenantService.get_tenant_detail(db, tenant.id)
 
     @staticmethod
@@ -556,6 +598,18 @@ class TenantService:
 
         await db.commit()
 
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_CREATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "status": tenant.status,
+                "timestamp": now.isoformat(),
+            })
+        except Exception:
+            pass
+
         return XionManagerLeadResponse(
             client_id=tenant.id,
             commercial_name=tenant.commercial_name,
@@ -711,6 +765,26 @@ class TenantService:
         db.add(comprobante)
         await db.commit()
         await db.refresh(comprobante)
+
+        try:
+            await notification_manager.broadcast({
+                "type": "INVOICE_ISSUED",
+                "comprobante_id": str(comprobante.id),
+                "numero_comprobante": comprobante.numero_comprobante,
+                "tenant_id": str(tenant.id),
+                "commercial_name": tenant.commercial_name,
+                "tax_id": tenant.tax_id,
+                "monto_usd": float(comprobante.monto_usd),
+                "total_ves": float(comprobante.total_ves),
+                "tasa_bcv": float(comprobante.tasa_bcv),
+                "payment_method": datos_snapshot.get("metodo_pago"),
+                "origin_bank": datos_snapshot.get("banco_origen"),
+                "reference_number": datos_snapshot.get("referencia"),
+                "estado": comprobante.estado,
+                "created_at": comprobante.created_at.isoformat(),
+            })
+        except Exception:
+            pass
 
         return TenantService._map_comprobante(comprobante, tenant)
 
@@ -873,6 +947,33 @@ class TenantService:
                 },
             )
 
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_STATUS_CHANGED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "previous_status": previous_status,
+                "status": req.status,
+                "reason": req.reason or "Modificación administrativa",
+                "timestamp": now.isoformat(),
+            })
+        except Exception:
+            pass
+
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "status": tenant.status,
+                "wallet_balance": float(tenant.wallet_balance or 0.0),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
         return await TenantService.get_tenant_detail(db, tenant_id)
 
     @staticmethod
@@ -972,6 +1073,19 @@ class TenantService:
                 },
             )
 
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "status": tenant.status,
+                "wallet_balance": float(tenant.wallet_balance or 0.0),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
+
         return await TenantService.get_tenant_detail(db, tenant_id)
 
     @staticmethod
@@ -1056,6 +1170,19 @@ class TenantService:
                     },
                 },
             )
+
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "status": tenant.status,
+                "wallet_balance": float(tenant.wallet_balance or 0.0),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
 
         return await TenantService.get_tenant_detail(db, tenant_id)
 
@@ -1212,6 +1339,20 @@ class TenantService:
                 },
             )
 
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_STATUS_CHANGED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "previous_status": prev_status,
+                "status": new_status,
+                "reason": reason or "Manipulación de estado en tiempo real para pruebas técnicas",
+                "timestamp": now.isoformat(),
+            })
+        except Exception:
+            pass
+
         return await TenantService.get_tenant_license_status(db, tenant.id)
 
     @staticmethod
@@ -1265,6 +1406,19 @@ class TenantService:
             if detail.active_subscription:
                 new_period_end = detail.active_subscription.current_period_end
             message = f"Saldo acreditado y suscripción '{plan_name}' renovada automáticamente por ${plan_price:.2f} USD. Saldo restante: ${new_balance:.2f} USD."
+
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "wallet_balance": new_balance,
+                "status": tenant.status,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
 
         return TenantBalanceResponse(
             tenant_id=tenant_id,
@@ -1439,6 +1593,35 @@ class TenantService:
                     "timestamp": now.isoformat(),
                 },
             )
+
+        try:
+            await notification_manager.broadcast({
+                "type": "TENANT_UPDATED",
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "wallet_balance": new_balance,
+                "status": "active",
+                "timestamp": now.isoformat(),
+            })
+            await notification_manager.broadcast({
+                "type": "INVOICE_ISSUED",
+                "comprobante_id": str(recibo.id),
+                "numero_comprobante": recibo.numero_comprobante,
+                "tenant_id": str(tenant.id),
+                "commercial_name": tenant.commercial_name,
+                "tax_id": tenant.tax_id,
+                "monto_usd": plan_price,
+                "total_ves": float(recibo.total_ves),
+                "tasa_bcv": float(current_rate),
+                "payment_method": "billetera",
+                "origin_bank": "Débito Billetera Xion-Pay",
+                "reference_number": recibo_num,
+                "estado": "PAGADO",
+                "created_at": now.isoformat(),
+            })
+        except Exception:
+            pass
 
         return await TenantService.get_tenant_detail(db, tenant.id)
 

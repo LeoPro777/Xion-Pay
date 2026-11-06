@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { usePreferences } from '../context/PreferencesContext';
 import { useDialog } from '../context/DialogContext';
+import { useAppData } from '../context/AppDataContext';
 import type { ComprobanteItem, TenantListItem } from '../types';
 import {
   X,
@@ -36,8 +37,9 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
 }) => {
   const { bcvRate } = usePreferences();
   const { showToast } = useDialog();
+  const { invoices: preloadedInvoices, refreshInvoices } = useAppData();
 
-  const [invoices, setInvoices] = useState<ComprobanteItem[]>([]);
+  const [invoices, setInvoices] = useState<ComprobanteItem[]>(preloadedInvoices || []);
   const [loading, setLoading] = useState<boolean>(false);
   const [search, setSearch] = useState<string>('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -107,6 +109,7 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
   useEffect(() => {
     if (isOpen) {
       fetchInvoices();
+      refreshInvoices();
     }
   }, [isOpen, fetchInvoices]);
 
@@ -172,6 +175,7 @@ export const InvoicesManagementModal: React.FC<InvoicesManagementModalProps> = (
       // Select the emitted invoice to show ticket
       setSelectedInvoice(res.data);
       fetchInvoices();
+      refreshInvoices();
     } catch (err: any) {
       console.error('Error emitting invoice:', err);
       showToast(err.response?.data?.message || 'Error al emitir factura inmutable.', 'error');

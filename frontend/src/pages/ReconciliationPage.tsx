@@ -14,17 +14,27 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 
+import { useAppData } from '../context/AppDataContext';
+
 interface ReconciliationPageProps {
-  lastEventTimestamp: number;
+  lastEventTimestamp?: number;
 }
 
 export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEventTimestamp }) => {
   const { confirm, showToast } = useDialog();
-  const [payments, setPayments] = useState<PaymentReport[]>([]);
-  const [selectedPayment, setSelectedPayment] = useState<PaymentReport | null>(null);
+  const {
+    pendingPayments,
+    paymentHistory,
+    tenants: preloadedTenants,
+    settings: preloadedSettings,
+    refreshPayments,
+  } = useAppData();
+
+  const [payments, setPayments] = useState<PaymentReport[]>(pendingPayments || []);
+  const [selectedPayment, setSelectedPayment] = useState<PaymentReport | null>(pendingPayments[0] || null);
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [searchFilter, setSearchFilter] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [actionLoading, setActionLoading] = useState<boolean>(false);
 
   // Reject Modal State
@@ -33,13 +43,13 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
 
   // Simulation Modal State (Test incoming payment from Xion-Manager instance)
   const [showSimulateModal, setShowSimulateModal] = useState<boolean>(false);
-  const [tenantsList, setTenantsList] = useState<TenantListItem[]>([]);
-  const [simTenantId, setSimTenantId] = useState<string>('');
+  const [tenantsList, setTenantsList] = useState<TenantListItem[]>(preloadedTenants || []);
+  const [simTenantId, setSimTenantId] = useState<string>(preloadedTenants[0]?.id || '');
   const [simBank, setSimBank] = useState<string>('Banesco');
   const [simRef, setSimRef] = useState<string>('');
   const [simAmount, setSimAmount] = useState<number>(50.0);
   const [simCurrency, setSimCurrency] = useState<string>('USD');
-  const [simRate, setSimRate] = useState<number>(36.50);
+  const [simRate, setSimRate] = useState<number>(preloadedSettings?.usd_ves_rate || 36.50);
   const [simError, setSimError] = useState<string | null>(null);
 
   const fetchPayments = async () => {
@@ -83,6 +93,25 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
   };
 
   useEffect(() => {
+    if (statusFilter === 'pending') {
+      setPayments(pendingPayments);
+      if (pendingPayments.length > 0) {
+        setSelectedPayment((prev) => (prev ? pendingPayments.find((p) => p.id === prev.id) || pendingPayments[0] : pendingPayments[0]));
+      } else {
+        setSelectedPayment(null);
+      }
+    } else {
+      const filtered = paymentHistory.filter((p) => p.status === statusFilter);
+      setPayments(filtered);
+      if (filtered.length > 0) {
+        setSelectedPayment((prev) => (prev ? filtered.find((p) => p.id === prev.id) || filtered[0] : filtered[0]));
+      } else {
+        setSelectedPayment(null);
+      }
+    }
+  }, [statusFilter, pendingPayments, paymentHistory]);
+
+  useEffect(() => {
     fetchPayments();
   }, [statusFilter, lastEventTimestamp]);
 
@@ -100,6 +129,7 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
     try {
       await api.post(`/payments/${selectedPayment.id}/approve`);
       showToast('Pago aprobado y conciliado exitosamente.', 'success');
+      refreshPayments();
       await fetchPayments();
     } catch (err: any) {
       showToast(`Error al aprobar pago: ${err.response?.data?.message || err.message}`, 'error');
@@ -118,6 +148,7 @@ export const ReconciliationPage: React.FC<ReconciliationPageProps> = ({ lastEven
       setShowRejectModal(false);
       setRejectReason('');
       showToast('Pago rechazado y notificado al comercio.', 'info');
+      refreshPayments();
       await fetchPayments();
     } catch (err: any) {
       showToast(`Error al rechazar pago: ${err.response?.data?.message || err.message}`, 'error');

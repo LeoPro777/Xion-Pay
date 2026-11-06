@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { NotificationProvider, useNotifications } from './context/NotificationContext';
 import { PreferencesProvider } from './context/PreferencesContext';
 import { DialogProvider } from './context/DialogContext';
+import { AppDataProvider, useAppData } from './context/AppDataContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
@@ -15,12 +16,11 @@ import { TenantsPage } from './pages/TenantsPage';
 import { PlansPage } from './pages/PlansPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
-import { api } from './services/api';
-import type { SystemSettings } from './types';
 
 const MainLayout: React.FC = () => {
   const { user, loading } = useAuth();
   const { lastEventTimestamp } = useNotifications();
+  const { isPreloaded, preloadingProgress, pendingPayments, settings } = useAppData();
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [isPreferencesOpen, setIsPreferencesOpen] = useState<boolean>(false);
@@ -29,18 +29,10 @@ const MainLayout: React.FC = () => {
   const [rateUpdatedTrigger, setRateUpdatedTrigger] = useState<number>(0);
 
   useEffect(() => {
-    const fetchRate = () => {
-      api.get<SystemSettings>('/settings')
-        .then((res) => {
-          if (res.data && typeof res.data.usd_ves_rate === 'number') {
-            setCurrentRate(res.data.usd_ves_rate);
-          }
-        })
-        .catch((err) => console.error('Error fetching settings from BDD:', err));
-    };
-
-    fetchRate();
-  }, [user, lastEventTimestamp, rateUpdatedTrigger]);
+    if (settings && typeof settings.usd_ves_rate === 'number') {
+      setCurrentRate(settings.usd_ves_rate);
+    }
+  }, [settings]);
 
   if (loading) {
     return (
@@ -69,36 +61,52 @@ const MainLayout: React.FC = () => {
         onOpenInvoices={() => setIsInvoicesModalOpen(true)}
       />
 
+      {/* SPA Real-Time Preloading Bar (fast micro-indicator) */}
+      {!isPreloaded && (
+        <div className="w-full bg-purple-100 dark:bg-purple-950/40 h-1 overflow-hidden">
+          <div
+            className="bg-purple-600 h-full transition-all duration-300 ease-out"
+            style={{ width: `${Math.max(15, preloadingProgress)}%` }}
+          />
+        </div>
+      )}
+
       <div className="flex flex-1">
         <Sidebar
           currentTab={currentTab}
           setCurrentTab={setCurrentTab}
+          pendingCount={pendingPayments.length}
           onOpenInvoices={() => setIsInvoicesModalOpen(true)}
         />
 
         <main className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full pb-20 md:pb-8">
-          {currentTab === 'dashboard' && (
+          {/* HIGH PERFORMANCE SPA PERSISTENT TAB CONTAINERS */}
+          <div className={currentTab === 'dashboard' ? 'block' : 'hidden'}>
             <DashboardPage
               onNavigateToReconciliation={() => setCurrentTab('reconciliation')}
               onNavigateToTenants={() => setCurrentTab('tenants')}
               lastEventTimestamp={rateUpdatedTrigger || lastEventTimestamp}
             />
-          )}
+          </div>
 
-          {currentTab === 'reconciliation' && (
+          <div className={currentTab === 'reconciliation' ? 'block' : 'hidden'}>
             <ReconciliationPage lastEventTimestamp={lastEventTimestamp} />
-          )}
+          </div>
 
-          {currentTab === 'tenants' && <TenantsPage />}
+          <div className={currentTab === 'tenants' ? 'block' : 'hidden'}>
+            <TenantsPage />
+          </div>
 
-          {currentTab === 'plans' && <PlansPage />}
+          <div className={currentTab === 'plans' ? 'block' : 'hidden'}>
+            <PlansPage />
+          </div>
 
-          {currentTab === 'settings' && (
+          <div className={currentTab === 'settings' ? 'block' : 'hidden'}>
             <SettingsPage
               onRateUpdated={handleRateUpdated}
               onOpenPreferences={() => setIsPreferencesOpen(true)}
             />
-          )}
+          </div>
         </main>
       </div>
 
@@ -133,7 +141,9 @@ export function App() {
       <PreferencesProvider>
         <AuthProvider>
           <NotificationProvider>
-            <MainLayout />
+            <AppDataProvider>
+              <MainLayout />
+            </AppDataProvider>
           </NotificationProvider>
         </AuthProvider>
       </PreferencesProvider>

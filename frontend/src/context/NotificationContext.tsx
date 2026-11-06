@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
 
 export interface NotificationItem {
@@ -15,6 +15,8 @@ interface NotificationContextType {
   clearNotifications: () => void;
   lastEventTimestamp: number;
   addNotification: (item: { type: string; message: string; data?: any }) => void;
+  wsConnected: boolean;
+  subscribeToSocket: (cb: (msg: any) => void) => () => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -24,6 +26,16 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [lastEventTimestamp, setLastEventTimestamp] = useState<number>(Date.now());
+  const [wsConnected, setWsConnected] = useState<boolean>(false);
+
+  const listenersRef = useRef<Set<(msg: any) => void>>(new Set());
+
+  const subscribeToSocket = (cb: (msg: any) => void) => {
+    listenersRef.current.add(cb);
+    return () => {
+      listenersRef.current.delete(cb);
+    };
+  };
 
   const addNotification = (item: { type: string; message: string; data?: any }) => {
     const newItem: NotificationItem = {
@@ -39,7 +51,10 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
   };
 
   useEffect(() => {
-    if (!token) return;
+    if (!token) {
+      setWsConnected(false);
+      return;
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
@@ -48,18 +63,37 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
     let socket: WebSocket | null = null;
     let reconnectTimeout: any = null;
+    let pingInterval: any = null;
 
     const connect = () => {
       try {
         socket = new WebSocket(wsUrl);
 
         socket.onopen = () => {
-          console.log('[WebSocket] Conectado a canal de notificaciones administrativas');
+          console.log('[WebSocket] Conectado a canal de notificaciones administrativas WSS');
+          setWsConnected(true);
+          // Heartbeat keep-alive every 20 seconds
+          pingInterval = setInterval(() => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+              socket.send('ping');
+            }
+          }, 20000);
         };
 
         socket.onmessage = (event) => {
           try {
+            if (event.data === 'pong') return;
             const data = JSON.parse(event.data);
+
+            // Forward to all subscribers (AppDataContext etc.)
+            listenersRef.current.forEach((cb) => {
+              try {
+                cb(data);
+              } catch (err) {
+                console.error('Error in socket listener:', err);
+              }
+            });
+
             if (data.type === 'NEW_PAYMENT_REPORTED') {
               const item: NotificationItem = {
                 id: data.payment.id,
@@ -92,7 +126,42 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
               setNotifications((prev) => [item, ...prev]);
               setUnreadCount((c) => c + 1);
               setLastEventTimestamp(Date.now());
-            } else if (data.type === 'PAYMENT_APPROVED' || data.type === 'PAYMENT_REJECTED' || data.type === 'TOLERANCE_EXTENDED') {
+            } else if (data.type === 'TENANT_STATUS_CHANGED') {
+              const item: NotificationItem = {
+                id: `status-${Date.now()}`,
+                type: 'TENANT_STATUS_CHANGED',
+                message: `Estado actualizado: ${data.commercial_name || data.tax_id} -> ${data.status.toUpperCase()}`,
+                timestamp: new Date().toLocaleTimeString(),
+                data: data,
+              };
+              setNotifications((prev) => [item, ...prev]);
+              setLastEventTimestamp(Date.now());
+            } else if (data.type === 'TENANT_CREATED') {
+              const item: NotificationItem = {
+                id: `created-${Date.now()}`,
+                type: 'TENANT_CREATED',
+                message: `Nuevo cliente registrado: ${data.commercial_name || data.tax_id}`,
+                timestamp: new Date().toLocaleTimeString(),
+                data: data,
+              };
+              setNotifications((prev) => [item, ...prev]);
+              setLastEventTimestamp(Date.now());
+            } else if (data.type === 'INVOICE_ISSUED') {
+              const item: NotificationItem = {
+                id: `inv-${Date.now()}`,
+                type: 'INVOICE_ISSUED',
+                message: `Factura ${data.numero_comprobante} emitida ($${data.monto_usd})`,
+                timestamp: new Date().toLocaleTimeString(),
+                data: data,
+              };
+              setNotifications((prev) => [item, ...prev]);
+              setLastEventTimestamp(Date.now());
+            } else if (
+              data.type === 'PAYMENT_APPROVED' ||
+              data.type === 'PAYMENT_REJECTED' ||
+              data.type === 'TOLERANCE_EXTENDED' ||
+              data.type === 'TENANT_UPDATED'
+            ) {
               setLastEventTimestamp(Date.now());
             }
           } catch (e) {
@@ -101,21 +170,26 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         };
 
         socket.onclose = () => {
+          setWsConnected(false);
+          if (pingInterval) clearInterval(pingInterval);
           reconnectTimeout = setTimeout(connect, 3000);
         };
 
         socket.onerror = (err) => {
           console.error('[WebSocket] Error:', err);
+          setWsConnected(false);
           socket?.close();
         };
       } catch (e) {
         console.error('[WebSocket] Fallo de conexión inicial:', e);
+        setWsConnected(false);
       }
     };
 
     connect();
 
     return () => {
+      if (pingInterval) clearInterval(pingInterval);
       if (socket) socket.close();
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
     };
@@ -127,7 +201,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   return (
     <NotificationContext.Provider
-      value={{ notifications, unreadCount, clearNotifications, lastEventTimestamp, addNotification }}
+      value={{
+        notifications,
+        unreadCount,
+        clearNotifications,
+        lastEventTimestamp,
+        addNotification,
+        wsConnected,
+        subscribeToSocket,
+      }}
     >
       {children}
     </NotificationContext.Provider>
@@ -141,3 +223,4 @@ export const useNotifications = () => {
   }
   return context;
 };
+

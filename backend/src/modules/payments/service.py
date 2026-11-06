@@ -428,11 +428,41 @@ class PaymentService:
             )
 
         # Notify via WebSocket
-        await notification_manager.broadcast({
-            "type": "PAYMENT_APPROVED",
-            "payment_id": str(payment.id),
-            "tenant_id": str(tenant.id),
-        })
+        try:
+            await notification_manager.broadcast({
+                "type": "PAYMENT_APPROVED",
+                "payment_id": str(payment.id),
+                "tenant_id": str(tenant.id),
+                "tax_id": tenant.tax_id,
+                "commercial_name": tenant.commercial_name,
+                "amount_usd": approved_usd,
+                "amount": float(payment.amount),
+                "currency": payment.currency,
+                "status": "approved",
+                "tenant_status": "active",
+                "wallet_balance": float(tenant.wallet_balance),
+                "comprobante_id": str(comprobante_record.id),
+                "numero_comprobante": num_comp,
+                "timestamp": now.isoformat(),
+            })
+            await notification_manager.broadcast({
+                "type": "INVOICE_ISSUED",
+                "comprobante_id": str(comprobante_record.id),
+                "numero_comprobante": num_comp,
+                "tenant_id": str(tenant.id),
+                "commercial_name": tenant.commercial_name,
+                "tax_id": tenant.tax_id,
+                "monto_usd": approved_usd,
+                "total_ves": total_ves_calc,
+                "tasa_bcv": t_rate,
+                "payment_method": payment.payment_method_type or "pago_movil",
+                "origin_bank": payment.origin_bank,
+                "reference_number": payment.reference_number,
+                "estado": "PAGADO",
+                "created_at": now.isoformat(),
+            })
+        except Exception:
+            pass
 
         return PaymentApproveResult(
             status="success",

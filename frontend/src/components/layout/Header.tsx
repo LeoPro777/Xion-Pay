@@ -39,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenInvoices,
 }) => {
   const { user, logout } = useAuth();
-  const { notifications, unreadCount, clearNotifications } = useNotifications();
+  const { notifications, unreadCount, clearNotifications, wsConnected } = useNotifications();
   const { bcvRate, bcvUpdatedAt, refreshBcvRate } = usePreferences();
 
   const [showNotificationPopover, setShowNotificationPopover] = useState(false);
@@ -285,14 +285,33 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* Connected Status Pill */}
-        <div className="hidden md:inline-flex items-center h-8 px-3 rounded-xl border border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 text-xs font-medium shadow-xs gap-1.5">
+        {/* Connected Status Pill (Real-Time WSS) */}
+        <div
+          className={`hidden md:inline-flex items-center h-8 px-3 rounded-xl border text-xs font-medium shadow-xs gap-1.5 transition-colors ${
+            wsConnected
+              ? 'border-emerald-200 dark:border-emerald-800/80 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
+              : 'border-amber-200 dark:border-amber-800/80 bg-amber-50/70 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+          }`}
+          title={wsConnected ? 'Canal WSS en tiempo real activo' : 'Reconectando canal WSS...'}
+        >
           <span className="relative flex h-2 w-2 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                wsConnected ? 'bg-emerald-400' : 'bg-amber-400'
+              }`}
+            ></span>
+            <span
+              className={`relative inline-flex rounded-full h-2 w-2 ${
+                wsConnected ? 'bg-emerald-500' : 'bg-amber-500'
+              }`}
+            ></span>
           </span>
-          <Wifi className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-          <span className="font-semibold text-xs">Conectado</span>
+          <Wifi
+            className={`w-3.5 h-3.5 shrink-0 ${
+              wsConnected ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+            }`}
+          />
+          <span className="font-semibold text-xs">{wsConnected ? 'WSS Activo' : 'Conectando'}</span>
         </div>
 
         {/* Notifications Bell */}

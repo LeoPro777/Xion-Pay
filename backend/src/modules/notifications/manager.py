@@ -27,7 +27,7 @@ class NotificationManager:
         if not self.active_connections:
             return
 
-        payload = json.dumps(message)
+        payload = json.dumps(message, default=str)
         disconnected = []
         for connection in self.active_connections:
             try:

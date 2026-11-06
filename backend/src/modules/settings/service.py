@@ -193,6 +193,11 @@ class SettingsService:
         db.add(pm)
         await db.commit()
         await db.refresh(pm)
+        try:
+            from src.modules.notifications.manager import notification_manager
+            await notification_manager.broadcast({"type": "PAYMENT_METHODS_UPDATED"})
+        except Exception:
+            pass
         return pm
 
     @staticmethod
@@ -215,6 +220,11 @@ class SettingsService:
         pm.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(pm)
+        try:
+            from src.modules.notifications.manager import notification_manager
+            await notification_manager.broadcast({"type": "PAYMENT_METHODS_UPDATED"})
+        except Exception:
+            pass
         return pm
 
     @staticmethod
@@ -224,6 +234,11 @@ class SettingsService:
         pm.updated_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(pm)
+        try:
+            from src.modules.notifications.manager import notification_manager
+            await notification_manager.broadcast({"type": "PAYMENT_METHODS_UPDATED"})
+        except Exception:
+            pass
         return pm
 
     @staticmethod
@@ -231,6 +246,11 @@ class SettingsService:
         pm = await SettingsService.get_payment_method(db, method_id)
         await db.delete(pm)
         await db.commit()
+        try:
+            from src.modules.notifications.manager import notification_manager
+            await notification_manager.broadcast({"type": "PAYMENT_METHODS_UPDATED"})
+        except Exception:
+            pass
 
     @staticmethod
     async def get_payment_methods_for_catalog(db: AsyncSession) -> Dict[str, Any]:

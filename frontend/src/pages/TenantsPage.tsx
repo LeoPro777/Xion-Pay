@@ -30,13 +30,21 @@ import {
   MoreHorizontal,
 } from 'lucide-react';
 
+import { useAppData } from '../context/AppDataContext';
+
 export const TenantsPage: React.FC = () => {
   const { confirm, showToast, showAlert } = useDialog();
-  const [tenants, setTenants] = useState<TenantListItem[]>([]);
-  const [plans, setPlans] = useState<Plan[]>([]);
+  const {
+    tenants: preloadedTenants,
+    plans: preloadedPlans,
+    refreshTenants,
+    updateTenantInCache,
+  } = useAppData();
+  const [tenants, setTenants] = useState<TenantListItem[]>(preloadedTenants || []);
+  const [plans, setPlans] = useState<Plan[]>(preloadedPlans || []);
   const [search, setSearch] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(preloadedTenants.length === 0);
 
   // Drawer & Modals
   const [selectedTenant, setSelectedTenant] = useState<TenantDetail | null>(null);
@@ -145,9 +153,27 @@ export const TenantsPage: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchTenants();
-    fetchPlans();
-  }, [search, statusFilter]);
+    if (preloadedTenants.length > 0 && !search && !statusFilter) {
+      setTenants(preloadedTenants);
+      setLoading(false);
+    }
+  }, [preloadedTenants, search, statusFilter]);
+
+  useEffect(() => {
+    if (preloadedPlans.length > 0) {
+      setPlans(preloadedPlans);
+      if (!selectedPlanId) setSelectedPlanId(preloadedPlans[0].id);
+    }
+  }, [preloadedPlans, selectedPlanId]);
+
+  useEffect(() => {
+    if (search || statusFilter) {
+      fetchTenants();
+    } else if (preloadedTenants.length === 0) {
+      fetchTenants();
+      fetchPlans();
+    }
+  }, [search, statusFilter, preloadedTenants.length]);
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -423,8 +449,10 @@ export const TenantsPage: React.FC = () => {
         status: newStatus,
         reason: isSuspended ? 'Reactivación administrativa desde CRM' : 'Desactivación administrativa desde CRM',
       });
+      updateTenantInCache(tenantId, { status: newStatus });
+      setTenants((prev) => prev.map((t) => (t.id === tenantId ? { ...t, status: newStatus } : t)));
       showToast(`Cliente ${isSuspended ? 'reactivado' : 'suspendido'} con éxito.`, 'success');
-      await fetchTenants();
+      refreshTenants();
       if (selectedTenant && selectedTenant.id === tenantId) {
         await openTenantDetail(tenantId);
       }
